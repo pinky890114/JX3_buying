@@ -1,0 +1,6 @@
+{
+  "name": "包裡的錢終究是吹向了西山居",
+  "description": "西山居周邊代購專用管理系統，具備多規格分類選單下單、即時訂單進度圖查詢與全功能後台管理。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
