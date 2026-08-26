@@ -62,23 +62,14 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
     });
   }, [products, selectedShopId, selectedCategoryId]);
 
-  // Active product index if multiple exist in the same category
-  const [activeProductIndex, setActiveProductIndex] = useState<number>(0);
-
-  // Active product
-  const activeProduct = useMemo(() => {
-    if (matchingProducts.length === 0) return null;
-    return matchingProducts[activeProductIndex] || matchingProducts[0];
-  }, [matchingProducts, activeProductIndex]);
-
   // Quantity tracker for each spec option: { [optionId: string]: number }
   const [specQuantities, setSpecQuantities] = useState<{ [optId: string]: number }>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Reset spec quantities when active product changes or shop changes
+  // Reset spec quantities when shop or category changes
   useEffect(() => {
     setSpecQuantities({});
-  }, [activeProduct?.id, selectedShopId]);
+  }, [selectedShopId, selectedCategoryId]);
 
   // Handlers for spec counter
   const handleIncreaseQty = (optId: string) => {
@@ -125,13 +116,18 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
     }
   };
 
-  // Compute total selected items & price
+  // Compute total selected items & price across all matching products in this category
   const selectedSummary = useMemo(() => {
-    if (!activeProduct || isCurrentShopClosed) return { totalCount: 0, totalTwd: 0, items: [] };
+    if (matchingProducts.length === 0 || isCurrentShopClosed) {
+      return { totalCount: 0, totalTwd: 0, items: [] };
+    }
 
     let totalCount = 0;
     let totalTwd = 0;
     const items: Array<{
+      productId: string;
+      productName: string;
+      productCoverImage: string;
       groupTitle: string;
       option: SpecOption;
       qty: number;
@@ -139,30 +135,35 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
       priceRmb: number;
     }> = [];
 
-    activeProduct.specGroups.forEach((group) => {
-      group.options.forEach((opt) => {
-        const qty = specQuantities[opt.id] || 0;
-        if (qty > 0) {
-          const unitTwd = opt.priceTwd 
-            ? opt.priceTwd 
-            : proxyStore.calculateTwd(activeProduct.basePriceRmb + (opt.priceOffsetRmb || 0));
-          const unitRmb = activeProduct.basePriceRmb + (opt.priceOffsetRmb || 0);
+    matchingProducts.forEach((prod) => {
+      prod.specGroups.forEach((group) => {
+        group.options.forEach((opt) => {
+          const qty = specQuantities[opt.id] || 0;
+          if (qty > 0) {
+            const unitTwd = opt.priceTwd 
+              ? opt.priceTwd 
+              : proxyStore.calculateTwd(prod.basePriceRmb + (opt.priceOffsetRmb || 0));
+            const unitRmb = prod.basePriceRmb + (opt.priceOffsetRmb || 0);
 
-          totalCount += qty;
-          totalTwd += unitTwd * qty;
-          items.push({
-            groupTitle: group.title,
-            option: opt,
-            qty,
-            priceTwd: unitTwd,
-            priceRmb: unitRmb,
-          });
-        }
+            totalCount += qty;
+            totalTwd += unitTwd * qty;
+            items.push({
+              productId: prod.id,
+              productName: prod.name,
+              productCoverImage: prod.coverImage,
+              groupTitle: group.title,
+              option: opt,
+              qty,
+              priceTwd: unitTwd,
+              priceRmb: unitRmb,
+            });
+          }
+        });
       });
     });
 
     return { totalCount, totalTwd, items };
-  }, [activeProduct, specQuantities, isCurrentShopClosed]);
+  }, [matchingProducts, specQuantities, isCurrentShopClosed]);
 
   // Batch add selected specs to cart
   const handleAddBatchToCart = () => {
@@ -172,7 +173,7 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
       return;
     }
 
-    if (!activeProduct || selectedSummary.items.length === 0) {
+    if (selectedSummary.items.length === 0) {
       setToastMessage('請先在下方規格清單中選擇數量！');
       setTimeout(() => setToastMessage(null), 2500);
       return;
@@ -181,9 +182,9 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
     selectedSummary.items.forEach((item) => {
       const depositTwd = Math.ceil(item.priceTwd * 0.5);
       onAddToCart({
-        productId: activeProduct.id,
-        productName: activeProduct.name,
-        coverImage: item.option.image || activeProduct.coverImage,
+        productId: item.productId,
+        productName: item.productName,
+        coverImage: item.option.image || item.productCoverImage,
         selectedSpecs: {
           [item.groupTitle]: item.option,
         },
@@ -207,22 +208,21 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
       return;
     }
 
-    if (!activeProduct || selectedSummary.items.length === 0) {
+    if (selectedSummary.items.length === 0) {
       setToastMessage('請先在下方規格清單中選擇數量！');
       setTimeout(() => setToastMessage(null), 2500);
       return;
     }
 
-    // Add first item and trigger instant checkout
     const firstItem = selectedSummary.items[0];
     const depositTwd = Math.ceil(firstItem.priceTwd * 0.5);
 
     // If there are multiple items, add the others to cart first
     selectedSummary.items.slice(1).forEach((item) => {
       onAddToCart({
-        productId: activeProduct.id,
-        productName: activeProduct.name,
-        coverImage: item.option.image || activeProduct.coverImage,
+        productId: item.productId,
+        productName: item.productName,
+        coverImage: item.option.image || item.productCoverImage,
         selectedSpecs: {
           [item.groupTitle]: item.option,
         },
@@ -234,9 +234,9 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
     });
 
     onInstantOrder({
-      productId: activeProduct.id,
-      productName: activeProduct.name,
-      coverImage: firstItem.option.image || activeProduct.coverImage,
+      productId: firstItem.productId,
+      productName: firstItem.productName,
+      coverImage: firstItem.option.image || firstItem.productCoverImage,
       selectedSpecs: {
         [firstItem.groupTitle]: firstItem.option,
       },
@@ -420,7 +420,6 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                   id={`btn-category-${subCat.id}`}
                   onClick={() => {
                     setSelectedCategoryId(subCat.id);
-                    setActiveProductIndex(0);
                   }}
                   className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center gap-2 border cursor-pointer ${
                     isSelected
@@ -437,28 +436,8 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
         </div>
       )}
 
-      {/* If there are multiple products in this category, allow choosing */}
-      {matchingProducts.length > 1 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-[#6B7280]">選擇具體商品:</span>
-          {matchingProducts.map((p, idx) => (
-            <button
-              key={p.id}
-              onClick={() => setActiveProductIndex(idx)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                activeProductIndex === idx
-                  ? 'bg-[#223147] text-[#E2B755] border-[#C5922E]'
-                  : 'bg-white text-[#4A5568] border-[#DDD5C7] hover:bg-[#FAF7F2]'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* === PRODUCT DETAILS & SPECIFICATIONS (Matching user's mockup) === */}
-      {activeProduct ? (
+      {/* === PRODUCT DETAILS & SPECIFICATIONS (All Products in Category) === */}
+      {matchingProducts.length > 0 ? (
         <div className="space-y-6">
           {/* Card: 商品說明與注意事項 */}
           <div className="p-6 rounded-2xl bg-white border border-[#DDD5C7] space-y-4 shadow-xs">
@@ -471,19 +450,19 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                 <span>商品說明</span>
               </div>
               <div className="text-sm text-[#4A5568] pl-7 whitespace-pre-line leading-relaxed">
-                {activeProduct.description || '詳見dc'}
+                {matchingProducts[0]?.description || '詳見dc'}
               </div>
             </div>
 
             {/* Disclaimer Notice Alert Box (紅色的警語移到商品說明下面) */}
             <div className="p-4 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs sm:text-sm text-[#CF1322] leading-relaxed shadow-2xs font-medium">
-              {activeProduct.disclaimerNotice ||
+              {matchingProducts[0]?.disclaimerNotice ||
                 '下面的價格都是台幣，以貼文時的匯率轉換計價方便參考，實際價格以收款時的匯率為準，以上價格皆不包含均攤、運費、集運費和賣貨便運費。'}
             </div>
           </div>
 
           {/* === STEP 3: 選擇規格與數量 === */}
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="text-sm sm:text-base font-extrabold text-[#1E2530] flex items-center gap-2">
                 <span className="w-5 h-5 rounded-md bg-[#223147] text-white text-xs flex items-center justify-center font-bold">
@@ -491,143 +470,193 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                 </span>
                 <span>選擇規格與數量</span>
               </h3>
-
-              {/* 規格處公告/備註 (如: 【已完售，預計年末或明年初再販】) */}
-              {activeProduct.specNotice && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs font-extrabold text-[#CF1322] shadow-2xs">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#CF1322]" />
-                  <span>
-                    {activeProduct.specNotice.startsWith('【') ? activeProduct.specNotice : `【${activeProduct.specNotice}】`}
-                  </span>
-                </div>
-              )}
+              <span className="text-xs text-[#6B7280]">
+                此種類共包含 <strong className="text-[#C5922E]">{matchingProducts.length}</strong> 款商品，可同時選取規格並一鍵結帳
+              </span>
             </div>
 
-            {/* Spec Groups */}
-            {activeProduct.specGroups.map((group) => (
-              <div key={group.id} className="space-y-4">
-                {/* Spec group title */}
-                <div className="flex items-center gap-3 pt-2">
-                  <h4 className="font-extrabold text-base text-[#1E2530] flex items-center gap-2">
-                    <span>{group.title}</span>
-                    {group.notice && (
-                      <span className="text-xs font-bold text-[#CF1322] bg-[#FFF2F0] border border-[#FFCCC7] px-2 py-0.5 rounded-lg">
-                        {group.notice.startsWith('【') ? group.notice : `【${group.notice}】`}
-                      </span>
-                    )}
-                  </h4>
-                  <div className="flex-1 border-t border-[#DDD5C7]" />
-                </div>
-
-                {/* Spec Options Cards Grid (Matching mockup card layout) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {group.options.map((opt) => {
-                    const count = specQuantities[opt.id] || 0;
-                    const priceTwd = opt.priceTwd 
-                      ? opt.priceTwd 
-                      : proxyStore.calculateTwd(activeProduct.basePriceRmb + (opt.priceOffsetRmb || 0));
-                    
-                    const isSoldOut = opt.inStock === false || (opt.statusNote && (opt.statusNote.includes('完售') || opt.statusNote.includes('售罄')));
-                    const isCardDisabled = isSoldOut || isCurrentShopClosed;
-
-                    return (
-                      <div
-                        key={opt.id}
-                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 bg-white shadow-xs ${
-                          isCardDisabled
-                            ? 'bg-[#FAF7F2]/60 border-[#DDD5C7]'
-                            : count > 0
-                            ? 'border-[#C5922E] ring-2 ring-[#C5922E]/20 bg-[#FAF7F2]'
-                            : 'border-[#DDD5C7] hover:border-[#C5922E]'
-                        }`}
-                      >
-                        {/* Left: Thumbnail & Name & Price */}
-                        <div className="flex items-center gap-3 min-w-0">
-                          {/* Image preview */}
-                          <div className="w-12 h-12 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] overflow-hidden shrink-0 relative">
-                            <img
-                              src={opt.image || activeProduct.coverImage}
-                              alt={opt.name}
-                              referrerPolicy="no-referrer"
-                              className={`w-full h-full object-cover ${isCardDisabled ? 'grayscale-40 opacity-70' : ''}`}
-                            />
-                            {isCurrentShopClosed ? (
-                              <div className="absolute inset-0 bg-[#A63434]/70 flex items-center justify-center text-[10px] font-extrabold text-white text-center px-1">
-                                閉店
-                              </div>
-                            ) : isSoldOut ? (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-[10px] font-extrabold text-white">
-                                完售
-                              </div>
-                            ) : null}
-                          </div>
-
-                          {/* Info */}
-                          <div className="min-w-0 space-y-0.5">
-                            <div className="font-extrabold text-sm text-[#1E2530] truncate flex items-center gap-1">
-                              <span>{opt.name}</span>
-                            </div>
-
-                            {/* Status note (e.g. 【已完售，預計年末或明年初再販】 or 閉店提醒) */}
-                            {isCurrentShopClosed ? (
-                              <div className="text-[11px] font-bold text-[#CF1322] leading-tight">
-                                【手慢則無，俠士下次請早】
-                              </div>
-                            ) : opt.statusNote ? (
-                              <div className="text-[11px] font-bold text-[#CF1322] leading-tight">
-                                {opt.statusNote.startsWith('【') ? opt.statusNote : `【${opt.statusNote}】`}
-                              </div>
-                            ) : null}
-
-                            <div className="text-xs font-bold text-[#A63434]">
-                              ${priceTwd}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right: Counter Stepper */}
-                        <div className="flex items-center gap-1 shrink-0 bg-[#FAF7F2] border border-[#DDD5C7] rounded-xl p-1">
-                          <button
-                            type="button"
-                            onClick={() => handleDecreaseQty(opt.id)}
-                            disabled={count === 0 || isCardDisabled}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
-                              count > 0 && !isCardDisabled
-                                ? 'bg-white hover:bg-[#EDE7DC] text-[#1E2530] border border-[#DDD5C7]'
-                                : 'text-gray-300 cursor-not-allowed'
-                            }`}
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-
-                          <span className={`w-8 text-center font-extrabold text-xs ${isCardDisabled ? 'text-[#A63434]' : 'text-[#1E2530]'}`}>
-                            {isCardDisabled ? 0 : count}
+            {/* List all products in this category */}
+            {matchingProducts.map((prod, prodIdx) => (
+              <div
+                key={prod.id}
+                className="space-y-4 p-5 sm:p-6 rounded-2xl bg-white border border-[#DDD5C7] shadow-xs"
+              >
+                {/* Product Title Banner if multiple products */}
+                {matchingProducts.length > 1 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#DDD5C7]">
+                    <div className="flex items-center gap-3">
+                      {prod.coverImage && (
+                        <img
+                          src={prod.coverImage}
+                          alt={prod.name}
+                          referrerPolicy="no-referrer"
+                          className="w-10 h-10 rounded-xl object-cover border border-[#DDD5C7] shrink-0"
+                        />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-[#223147] text-[#E2B755] text-[11px] font-bold">
+                            商品 {prodIdx + 1}
                           </span>
-
-                          <button
-                            type="button"
-                            onClick={() => !isCardDisabled && handleIncreaseQty(opt.id)}
-                            disabled={isCardDisabled}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs transition-colors ${
-                              isCardDisabled
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
-                                : 'bg-white hover:bg-[#EDE7DC] text-[#1E2530] border border-[#DDD5C7] cursor-pointer'
-                            }`}
-                            title={
-                              isCurrentShopClosed
-                                ? '手慢則無，俠士下次請早（已閉店）'
-                                : isSoldOut
-                                ? '已完售無法加購'
-                                : '增加數量'
-                            }
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
+                          <h4 className="text-base sm:text-lg font-black text-[#1E2530]">
+                            {prod.name}
+                          </h4>
                         </div>
+                        {prod.description && prod.description !== matchingProducts[0]?.description && (
+                          <p className="text-xs text-[#6B7280] mt-0.5">{prod.description}</p>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+
+                    {/* Spec notice for this specific product */}
+                    {prod.specNotice && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs font-extrabold text-[#CF1322] shadow-2xs shrink-0 self-start sm:self-auto">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#CF1322]" />
+                        <span>
+                          {prod.specNotice.startsWith('【') ? prod.specNotice : `【${prod.specNotice}】`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Single Product Spec Notice (when only 1 product) */}
+                {matchingProducts.length === 1 && prod.specNotice && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs font-extrabold text-[#CF1322] shadow-2xs">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#CF1322]" />
+                    <span>
+                      {prod.specNotice.startsWith('【') ? prod.specNotice : `【${prod.specNotice}】`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Spec Groups for this Product */}
+                {prod.specGroups.map((group) => (
+                  <div key={group.id} className="space-y-3">
+                    {/* Spec group title */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <h5 className="font-extrabold text-sm sm:text-base text-[#1E2530] flex items-center gap-2">
+                        <span>{group.title}</span>
+                        {group.notice && (
+                          <span className="text-xs font-bold text-[#CF1322] bg-[#FFF2F0] border border-[#FFCCC7] px-2 py-0.5 rounded-lg">
+                            {group.notice.startsWith('【') ? group.notice : `【${group.notice}】`}
+                          </span>
+                        )}
+                      </h5>
+                      <div className="flex-1 border-t border-[#DDD5C7]" />
+                    </div>
+
+                    {/* Spec Options Cards Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      {group.options.map((opt) => {
+                        const count = specQuantities[opt.id] || 0;
+                        const priceTwd = opt.priceTwd 
+                          ? opt.priceTwd 
+                          : proxyStore.calculateTwd(prod.basePriceRmb + (opt.priceOffsetRmb || 0));
+                        
+                        const isSoldOut = opt.inStock === false || (opt.statusNote && (opt.statusNote.includes('完售') || opt.statusNote.includes('售罄')));
+                        const isCardDisabled = isSoldOut || isCurrentShopClosed;
+
+                        return (
+                          <div
+                            key={opt.id}
+                            className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 bg-white shadow-xs ${
+                              isCardDisabled
+                                ? 'bg-[#FAF7F2]/60 border-[#DDD5C7]'
+                                : count > 0
+                                ? 'border-[#C5922E] ring-2 ring-[#C5922E]/20 bg-[#FAF7F2]'
+                                : 'border-[#DDD5C7] hover:border-[#C5922E]'
+                            }`}
+                          >
+                            {/* Left: Thumbnail & Name & Price */}
+                            <div className="flex items-center gap-3 min-w-0">
+                              {/* Image preview */}
+                              <div className="w-12 h-12 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] overflow-hidden shrink-0 relative">
+                                <img
+                                  src={opt.image || prod.coverImage}
+                                  alt={opt.name}
+                                  referrerPolicy="no-referrer"
+                                  className={`w-full h-full object-cover ${isCardDisabled ? 'grayscale-40 opacity-70' : ''}`}
+                                />
+                                {isCurrentShopClosed ? (
+                                  <div className="absolute inset-0 bg-[#A63434]/70 flex items-center justify-center text-[10px] font-extrabold text-white text-center px-1">
+                                    閉店
+                                  </div>
+                                ) : isSoldOut ? (
+                                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-[10px] font-extrabold text-white">
+                                    完售
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {/* Info */}
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="font-extrabold text-sm text-[#1E2530] truncate flex items-center gap-1">
+                                  <span>{opt.name}</span>
+                                </div>
+
+                                {/* Status note */}
+                                {isCurrentShopClosed ? (
+                                  <div className="text-[11px] font-bold text-[#CF1322] leading-tight">
+                                    【手慢則無，俠士下次請早】
+                                  </div>
+                                ) : opt.statusNote ? (
+                                  <div className="text-[11px] font-bold text-[#CF1322] leading-tight">
+                                    {opt.statusNote.startsWith('【') ? opt.statusNote : `【${opt.statusNote}】`}
+                                  </div>
+                                ) : null}
+
+                                <div className="text-xs font-bold text-[#A63434]">
+                                  ${priceTwd}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right: Counter Stepper */}
+                            <div className="flex items-center gap-1 shrink-0 bg-[#FAF7F2] border border-[#DDD5C7] rounded-xl p-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDecreaseQty(opt.id)}
+                                disabled={count === 0 || isCardDisabled}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
+                                  count > 0 && !isCardDisabled
+                                    ? 'bg-white hover:bg-[#EDE7DC] text-[#1E2530] border border-[#DDD5C7]'
+                                    : 'text-gray-300 cursor-not-allowed'
+                                }`}
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+
+                              <span className={`w-8 text-center font-extrabold text-xs ${isCardDisabled ? 'text-[#A63434]' : 'text-[#1E2530]'}`}>
+                                {isCardDisabled ? 0 : count}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => !isCardDisabled && handleIncreaseQty(opt.id)}
+                                disabled={isCardDisabled}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs transition-colors ${
+                                  isCardDisabled
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
+                                    : 'bg-white hover:bg-[#EDE7DC] text-[#1E2530] border border-[#DDD5C7] cursor-pointer'
+                                }`}
+                                title={
+                                  isCurrentShopClosed
+                                    ? '手慢則無，俠士下次請早（已閉店）'
+                                    : isSoldOut
+                                    ? '已完售無法加購'
+                                    : '增加數量'
+                                }
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

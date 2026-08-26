@@ -134,6 +134,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <ShieldCheck className="w-3.5 h-3.5 text-[#C5922E]" />
               <span>管理員專屬後台</span>
             </span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#EBF7F0] text-[#2E8B57] border border-[#A3D9B8] flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#2E8B57] animate-pulse" />
+              <span>Firebase 雲端即時同步</span>
+            </span>
             {adminUser?.isDevBypass && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FAF7F2] text-[#6B7280] border border-[#DDD5C7]">
                 免密模式

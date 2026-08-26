@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, SubCategory, ProductItem, SpecGroup, SpecOption } from '../../types';
 import { proxyStore } from '../../services/store';
+import { ImageUpload } from '../Common/ImageUpload';
 import { 
   Plus, Trash2, Edit3, Check, Layers, Image as ImageIcon, Sparkles, 
-  AlertCircle, Sword, Store, FolderPlus, Tag, ShoppingBag, ArrowRight, CheckCircle2, ChevronRight, X, AlertTriangle, Lock, Unlock, Ban
+  AlertCircle, Sword, Store, FolderPlus, Tag, ShoppingBag, ArrowRight, CheckCircle2, ChevronRight, X, AlertTriangle, Lock, Unlock, Ban, Upload
 } from 'lucide-react';
 
 interface CatalogManagerProps {
@@ -836,14 +837,14 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                 />
               </div>
 
-              {/* Cover Image URL */}
+              {/* Cover Image URL / Local Upload */}
               <div className="space-y-1">
-                <label className="font-bold text-[#1E2530]">商品主封面圖 URL</label>
-                <input
-                  type="text"
+                <ImageUpload
+                  label="商品主封面圖 (可直接上傳本機圖片，免圖床)"
                   value={coverImage}
-                  onChange={(e) => setCoverImage(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] text-[#1E2530] outline-none focus:border-[#C5922E]"
+                  onChange={(val) => setCoverImage(val)}
+                  previewSize="md"
+                  placeholder="或貼上圖片 URL (如 https://...)"
                 />
               </div>
 
@@ -960,18 +961,46 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                                 />
                               </div>
 
-                              {/* Image URL */}
-                              <input
-                                type="text"
-                                value={opt.image || ''}
-                                onChange={(e) => {
-                                  const newGroups = [...specGroups];
-                                  newGroups[gIdx].options[oIdx].image = e.target.value;
-                                  setSpecGroups(newGroups);
-                                }}
-                                className="w-full sm:flex-1 p-2 rounded-lg bg-white border border-[#DDD5C7] text-xs text-[#4A5568] outline-none truncate"
-                                placeholder="規格縮圖 URL (選填)"
-                              />
+                              {/* Image Input with quick upload */}
+                              <div className="w-full sm:flex-1 flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  value={opt.image?.startsWith('data:') ? '【本機圖片】' : (opt.image || '')}
+                                  onChange={(e) => {
+                                    if (!e.target.value.includes('本機圖片')) {
+                                      const newGroups = [...specGroups];
+                                      newGroups[gIdx].options[oIdx].image = e.target.value;
+                                      setSpecGroups(newGroups);
+                                    }
+                                  }}
+                                  className="w-full p-2 rounded-lg bg-white border border-[#DDD5C7] text-xs text-[#4A5568] outline-none truncate"
+                                  placeholder="規格縮圖 URL / 選填"
+                                />
+                                <label className="p-2 rounded-lg bg-[#223147] hover:bg-[#1A2536] text-[#E2B755] text-xs cursor-pointer shrink-0 transition-colors flex items-center gap-1 font-bold" title="從本機上傳規格縮圖">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">上傳</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                          const base64 = ev.target?.result as string;
+                                          if (base64) {
+                                            const newGroups = [...specGroups];
+                                            newGroups[gIdx].options[oIdx].image = base64;
+                                            setSpecGroups(newGroups);
+                                          }
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
 
                               {/* Delete button */}
                               <button

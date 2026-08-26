@@ -1,17 +1,18 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import firebaseConfigGenerated from '../../firebase-applet-config.json';
 
-// Optional Firebase configuration fallback
 const metaEnv = (import.meta as any).env || {};
 
+// Merge generated config with runtime env variables
 const firebaseConfig = {
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || "AIzaSyDummyConfigForDevPreview_SeasunProxy",
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || "seasun-proxy.firebaseapp.com",
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || "seasun-proxy",
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || "seasun-proxy.appspot.com",
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || "1234567890",
-  appId: metaEnv.VITE_FIREBASE_APP_ID || "1:1234567890:web:abcdef123456",
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || firebaseConfigGenerated.apiKey,
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigGenerated.authDomain,
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || firebaseConfigGenerated.projectId,
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigGenerated.storageBucket,
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigGenerated.messagingSenderId,
+  appId: metaEnv.VITE_FIREBASE_APP_ID || firebaseConfigGenerated.appId,
 };
 
 let app: ReturnType<typeof initializeApp> | null = null;
@@ -24,10 +25,20 @@ try {
   } else {
     app = getApp();
   }
-  db = getFirestore(app);
+  
+  const databaseId = firebaseConfigGenerated.firestoreDatabaseId;
+  db = databaseId && databaseId !== '(default)' 
+    ? getFirestore(app, databaseId) 
+    : getFirestore(app);
+
   auth = getAuth(app);
+  console.log('✅ Firebase initialized successfully with Firestore database:', databaseId || '(default)');
 } catch (err) {
-  console.warn('Firebase initialized in client demo mode:', err);
+  console.warn('Firebase initialized with fallback:', err);
+  if (app) {
+    db = getFirestore(app);
+    auth = getAuth(app);
+  }
 }
 
 export { app, db, auth };

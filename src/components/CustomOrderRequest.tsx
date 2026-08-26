@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { proxyStore } from '../services/store';
 import { Order } from '../types';
+import { ImageUpload } from './Common/ImageUpload';
 import confetti from 'canvas-confetti';
 import { ExternalLink, Send, ArrowRight, CheckCircle2, User, Phone, MapPin, Sparkles, HelpCircle, Cat, Heart } from 'lucide-react';
 
@@ -11,6 +12,7 @@ interface CustomOrderRequestProps {
 export const CustomOrderRequest: React.FC<CustomOrderRequestProps> = ({ onOrderCreated }) => {
   const [productUrl, setProductUrl] = useState('');
   const [productTitle, setProductTitle] = useState('');
+  const [productImage, setProductImage] = useState('');
   const [specRequirement, setSpecRequirement] = useState('');
   const [estimatedRmb, setEstimatedRmb] = useState<number>(100);
   const [quantity, setQuantity] = useState<number>(1);
@@ -42,7 +44,7 @@ export const CustomOrderRequest: React.FC<CustomOrderRequestProps> = ({ onOrderC
         {
           productId: `custom-${Date.now()}`,
           productName: `【客製自選】${productTitle.trim()}`,
-          coverImage: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=700&auto=format&fit=crop&q=80',
+          coverImage: productImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=700&auto=format&fit=crop&q=80',
           selectedSpecsText: `規格需求：${specRequirement.trim() || '依商品網址'} (商品網址: ${productUrl.trim()})`,
           quantity,
           priceRmb: estimatedRmb,
@@ -59,7 +61,7 @@ export const CustomOrderRequest: React.FC<CustomOrderRequestProps> = ({ onOrderC
       paymentStatus: 'unpaid',
       publicNotes: `🔗 客製自選商品已登記！\n網址：${productUrl.trim()}\n需求款式：${specRequirement.trim()}\n請於核對報價後匯款訂金 NT$ ${depositTwd} 並於查詢系統回報。`,
       adminNotes: `客製自選登記，商品網址: ${productUrl.trim()}`,
-      explanationImages: ['https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=700&auto=format&fit=crop&q=80'],
+      explanationImages: [productImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=700&auto=format&fit=crop&q=80'],
     });
 
     try {
@@ -147,6 +149,17 @@ export const CustomOrderRequest: React.FC<CustomOrderRequestProps> = ({ onOrderC
               value={productTitle}
               onChange={(e) => setProductTitle(e.target.value)}
               className="w-full p-3 rounded-2xl bg-[#FFF5F8] border border-[#F5CDDA] focus:border-[#FA5276] text-[#3E2430] placeholder-[#A07B8E] outline-none transition-colors"
+            />
+          </div>
+
+          {/* Product Picture Direct Upload */}
+          <div className="space-y-1">
+            <ImageUpload
+              label="商品截圖 / 實品照片 (可直接從相簿或電腦上傳)"
+              value={productImage}
+              onChange={(val) => setProductImage(val)}
+              previewSize="md"
+              placeholder="或貼上商品圖片網址 (選填)"
             />
           </div>
 

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Order, OrderStatus } from '../../types';
 import { proxyStore } from '../../services/store';
 import { 
   X, Check, Clock, Edit3, Image as ImageIcon, Plus, 
   Trash2, Copy, Send, Truck, CreditCard, User, Package, 
-  ShieldCheck, AlertCircle, Sparkles, ExternalLink, Cat, Heart 
+  ShieldCheck, AlertCircle, Sparkles, ExternalLink, Cat, Heart, Upload, Loader2
 } from 'lucide-react';
 
 interface OrderEditModalProps {
@@ -394,8 +394,8 @@ ${trackingNumber ? `🏷️ 物流單號：${trackingNumber}\n` : ''}📝 店主
             ))}
           </div>
 
-          {/* Custom URL add */}
-          <div className="flex gap-2">
+          {/* Custom URL add or Local file direct upload */}
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               placeholder="請輸入說明圖 / 採購截圖之圖片 URL (https://...)"
@@ -403,14 +403,40 @@ ${trackingNumber ? `🏷️ 物流單號：${trackingNumber}\n` : ''}📝 店主
               onChange={(e) => setNewImageUrl(e.target.value)}
               className="flex-1 p-2.5 rounded-xl bg-white border border-[#F5CDDA] text-[#3E2430] text-xs outline-none focus:border-[#FA5276]"
             />
-            <button
-              type="button"
-              onClick={() => handleAddImage()}
-              className="px-4 py-2.5 rounded-xl bg-[#FF6B8B] hover:bg-[#FA5276] text-white font-bold text-xs shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>新增圖片</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleAddImage()}
+                className="px-3.5 py-2.5 rounded-xl bg-[#FAF7F2] hover:bg-[#EDE7DC] text-[#3E2430] border border-[#DDD5C7] font-bold text-xs shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>加入網址</span>
+              </button>
+
+              <label className="px-4 py-2.5 rounded-xl bg-[#FF6B8B] hover:bg-[#FA5276] text-white font-bold text-xs shrink-0 flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs">
+                <Upload className="w-3.5 h-3.5" />
+                <span>從本機/手機上傳圖片</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []) as File[];
+                    files.forEach((file: File) => {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const base64 = ev.target?.result as string;
+                        if (base64) {
+                          setExplanationImages((prev) => [...prev, base64]);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                  }}
+                />
+              </label>
+            </div>
           </div>
 
           {/* Images Grid */}

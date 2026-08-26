@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Order, OrderStatus } from '../types';
 import { proxyStore } from '../services/store';
 import { 
   Search, Package, Clock, CheckCircle2, Truck, AlertCircle, 
   CreditCard, Send, Image as ImageIcon, Sparkles, MapPin, 
   Phone, User, ChevronRight, Copy, Check, Info, ShieldCheck, RefreshCw, Layers, ArrowLeft, ShoppingCart,
-  Flame, Sword, Shield
+  Flame, Sword, Shield, Upload, X
 } from 'lucide-react';
 
 interface OrderQueryProps {
@@ -41,8 +41,9 @@ export const OrderQuery: React.FC<OrderQueryProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Quick report payment last 5 digits
+  // Quick report payment last 5 digits & receipt screenshot
   const [last5Input, setLast5Input] = useState<string>('');
+  const [receiptImage, setReceiptImage] = useState<string>('');
   const [reportSuccess, setReportSuccess] = useState<string | null>(null);
 
   // Lightbox for explanation images
@@ -83,19 +84,24 @@ export const OrderQuery: React.FC<OrderQueryProps> = ({
 
   const handleReportLast5 = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder || !last5Input.trim()) return;
+    if (!selectedOrder || (!last5Input.trim() && !receiptImage)) return;
+
+    const existingImages = selectedOrder.explanationImages || [];
+    const newImages = receiptImage ? [...existingImages, receiptImage] : existingImages;
 
     const updated = proxyStore.updateOrder(selectedOrder.id, {
-      paymentAccountLast5: last5Input.trim(),
+      paymentAccountLast5: last5Input.trim() || selectedOrder.paymentAccountLast5,
       paymentStatus: 'deposit_paid',
-      publicNotes: `${selectedOrder.publicNotes}\n[買家回報]: 匯款末五碼為「${last5Input.trim()}」，待核對中。`,
+      publicNotes: `${selectedOrder.publicNotes}\n[買家回報]: ${last5Input.trim() ? `匯款末五碼為「${last5Input.trim()}」` : ''}${receiptImage ? '（已附上轉帳明細截圖）' : ''}，待核對中。`,
+      explanationImages: newImages,
     });
 
     if (updated) {
       setSelectedOrder(updated);
-      setReportSuccess(`已成功回報匯款末五碼「${last5Input.trim()}」！核對後將即時更新狀態。`);
+      setReportSuccess(`已成功回報匯款資訊${last5Input.trim() ? `「末五碼: ${last5Input.trim()}」` : ''}${receiptImage ? '（含轉帳截圖）' : ''}！核對後將即時更新狀態。`);
       setLast5Input('');
-      setTimeout(() => setReportSuccess(null), 4000);
+      setReceiptImage('');
+      setTimeout(() => setReportSuccess(null), 4500);
     }
   };
 
@@ -517,11 +523,11 @@ export const OrderQuery: React.FC<OrderQueryProps> = ({
                     )}
 
                     {/* Report Last 5 digits Form */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-[#FFF9F9] border border-[#E8C4C4] space-y-2.5">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-[#FFF9F9] border border-[#E8C4C4] space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-extrabold text-[#8B1D1D] flex items-center gap-1.5">
                           <CreditCard className="w-4 h-4 text-[#8B1D1D]" />
-                          買家匯款末五碼回報
+                          買家匯款末五碼與轉帳明細回報
                         </h4>
                         <span className="text-[11px] text-[#6B7280]">匯款完成後請在此回報以便核對</span>
                       </div>
@@ -532,22 +538,67 @@ export const OrderQuery: React.FC<OrderQueryProps> = ({
                         </div>
                       )}
 
-                      <form onSubmit={handleReportLast5} className="flex gap-2">
-                        <input
-                          type="text"
-                          maxLength={10}
-                          value={last5Input}
-                          onChange={(e) => setLast5Input(e.target.value)}
-                          placeholder="請輸入您轉帳帳號的末五碼 (例如: 88219)"
-                          className="flex-1 px-3.5 py-2 rounded-xl bg-white border border-[#E8C4C4] text-[#1E2530] text-xs sm:text-sm placeholder-[#8A95A5] focus:border-[#8B1D1D] outline-none font-medium"
-                        />
-                        <button
-                          type="submit"
-                          className="px-4 py-2 rounded-xl bg-[#8B1D1D] hover:bg-[#731414] text-white font-bold text-xs sm:text-sm flex items-center gap-1 transition-all shrink-0 cursor-pointer shadow-xs"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>提交回報</span>
-                        </button>
+                      <form onSubmit={handleReportLast5} className="space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            maxLength={10}
+                            value={last5Input}
+                            onChange={(e) => setLast5Input(e.target.value)}
+                            placeholder="請輸入您轉帳帳號的末五碼 (例如: 88219)"
+                            className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-[#E8C4C4] text-[#1E2530] text-xs sm:text-sm placeholder-[#8A95A5] focus:border-[#8B1D1D] outline-none font-medium"
+                          />
+
+                          <label className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-[#FAF7F2] text-[#8B1D1D] border border-[#E8C4C4] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0">
+                            <Upload className="w-4 h-4" />
+                            <span>{receiptImage ? '已附加轉帳截圖' : '上傳轉帳明細圖'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const base64 = ev.target?.result as string;
+                                    if (base64) {
+                                      setReceiptImage(base64);
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            type="submit"
+                            className="px-5 py-2.5 rounded-xl bg-[#8B1D1D] hover:bg-[#731414] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1 transition-all shrink-0 cursor-pointer shadow-xs"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>提交回報</span>
+                          </button>
+                        </div>
+
+                        {receiptImage && (
+                          <div className="flex items-center gap-2 p-2 rounded-xl bg-white border border-[#E8C4C4]">
+                            <img
+                              src={receiptImage}
+                              alt="轉帳明細截圖"
+                              referrerPolicy="no-referrer"
+                              className="w-10 h-10 rounded-lg object-cover border border-[#E8C4C4]"
+                            />
+                            <span className="text-xs text-[#2E8B57] font-bold flex-1">已成功選取轉帳截圖（免圖床直接上傳）</span>
+                            <button
+                              type="button"
+                              onClick={() => setReceiptImage('')}
+                              className="text-xs text-[#A63434] hover:underline p-1 cursor-pointer font-bold"
+                            >
+                              ✕ 移除截圖
+                            </button>
+                          </div>
+                        )}
                       </form>
                     </div>
                   </div>

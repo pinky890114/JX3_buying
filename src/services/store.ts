@@ -1,5 +1,15 @@
 import { Order, ProductItem, Category, SubCategory, ProxyRateConfig, OrderStatus, FinancialTransaction } from '../types';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_TRANSACTIONS, DEFAULT_RATE_CONFIG } from '../data/initialData';
+import { db } from './firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  getDocs,
+  writeBatch
+} from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   ORDERS: 'xsj_proxy_orders_v1',
@@ -8,6 +18,7 @@ const STORAGE_KEYS = {
   RATE_CONFIG: 'xsj_proxy_rate_config_v1',
   ADMIN_AUTH: 'xsj_proxy_admin_auth_v1',
   TRANSACTIONS: 'xsj_proxy_transactions_v1',
+  SEEDED: 'xsj_proxy_firebase_seeded_v1',
 };
 
 export interface AdminUser {
@@ -18,7 +29,7 @@ export interface AdminUser {
   isDevBypass?: boolean;
 }
 
-// Memory & LocalStorage unified store with Firestore capability hooks
+// Unified Store syncing between Local Cache & Firebase Firestore in Real-Time
 class ProxyStoreService {
   private orders: Order[] = [];
   private products: ProductItem[] = [];
@@ -27,66 +38,197 @@ class ProxyStoreService {
   private rateConfig: ProxyRateConfig = DEFAULT_RATE_CONFIG;
   private currentAdmin: AdminUser | null = null;
   private listeners: (() => void)[] = [];
+  private isFirebaseConnected: boolean = false;
 
   constructor() {
-    this.init();
+    this.initLocal();
+    this.initFirebaseSync();
   }
 
-  private init() {
+  private initLocal() {
     try {
-      // Load Orders
+      // Load Orders from cache
       const savedOrders = localStorage.getItem(STORAGE_KEYS.ORDERS);
       if (savedOrders) {
         this.orders = JSON.parse(savedOrders);
       } else {
         this.orders = [...INITIAL_ORDERS];
-        this.saveOrders();
+        this.saveOrdersLocal();
       }
 
-      // Load Products
+      // Load Products from cache
       const savedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
       if (savedProducts) {
         this.products = JSON.parse(savedProducts);
       } else {
         this.products = [...INITIAL_PRODUCTS];
-        this.saveProducts();
+        this.saveProductsLocal();
       }
 
-      // Load Categories
+      // Load Categories from cache
       const savedCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
       if (savedCategories) {
         this.categories = JSON.parse(savedCategories);
       } else {
         this.categories = [...INITIAL_CATEGORIES];
-        this.saveCategories();
+        this.saveCategoriesLocal();
       }
 
-      // Load Transactions (Financial Cash Flow)
+      // Load Transactions from cache
       const savedTransactions = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
       if (savedTransactions) {
         this.transactions = JSON.parse(savedTransactions);
       } else {
         this.transactions = [...INITIAL_TRANSACTIONS];
-        this.saveTransactions();
+        this.saveTransactionsLocal();
       }
 
-      // Load Rate Config
+      // Load Rate Config from cache
       const savedRates = localStorage.getItem(STORAGE_KEYS.RATE_CONFIG);
       if (savedRates) {
         this.rateConfig = JSON.parse(savedRates);
       }
 
-      // Load Admin Auth state
+      // Load Admin Auth
       const savedAuth = localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH);
       if (savedAuth) {
         this.currentAdmin = JSON.parse(savedAuth);
       }
     } catch (err) {
-      console.warn('LocalStorage load error, using initial defaults', err);
+      console.warn('Local cache load fallback:', err);
       this.orders = [...INITIAL_ORDERS];
       this.products = [...INITIAL_PRODUCTS];
       this.categories = [...INITIAL_CATEGORIES];
       this.transactions = [...INITIAL_TRANSACTIONS];
+    }
+  }
+
+  /**
+   * Real-time sync with Firebase Cloud Firestore
+   */
+  private async initFirebaseSync() {
+    if (!db) {
+      console.log('Firebase DB not initialized, continuing in Local Storage mode.');
+      return;
+    }
+
+    try {
+      // 1. Subscribe to Orders
+      const ordersCol = collection(db, 'orders');
+      onSnapshot(ordersCol, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudOrders: Order[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudOrders.push(docSnap.data() as Order);
+          });
+          // Sort descending by creation date
+          cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          this.orders = cloudOrders;
+          this.saveOrdersLocal();
+          this.isFirebaseConnected = true;
+          this.notify();
+        } else if (!localStorage.getItem(STORAGE_KEYS.SEEDED)) {
+          // Seed initial orders to cloud
+          this.seedInitialDataToFirebase();
+        }
+      }, (err) => console.warn('Firestore Orders sync note:', err.message));
+
+      // 2. Subscribe to Products
+      const productsCol = collection(db, 'products');
+      onSnapshot(productsCol, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudProducts: ProductItem[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudProducts.push(docSnap.data() as ProductItem);
+          });
+          this.products = cloudProducts;
+          this.saveProductsLocal();
+          this.notify();
+        }
+      }, (err) => console.warn('Firestore Products sync note:', err.message));
+
+      // 3. Subscribe to Categories
+      const categoriesCol = collection(db, 'categories');
+      onSnapshot(categoriesCol, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudCategories: Category[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudCategories.push(docSnap.data() as Category);
+          });
+          this.categories = cloudCategories;
+          this.saveCategoriesLocal();
+          this.notify();
+        }
+      }, (err) => console.warn('Firestore Categories sync note:', err.message));
+
+      // 4. Subscribe to Transactions
+      const txnsCol = collection(db, 'transactions');
+      onSnapshot(txnsCol, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudTxns: FinancialTransaction[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudTxns.push(docSnap.data() as FinancialTransaction);
+          });
+          cloudTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          this.transactions = cloudTxns;
+          this.saveTransactionsLocal();
+          this.notify();
+        }
+      }, (err) => console.warn('Firestore Transactions sync note:', err.message));
+
+      // 5. Subscribe to Settings (Rate Config)
+      const settingsCol = collection(db, 'settings');
+      onSnapshot(settingsCol, (snapshot) => {
+        snapshot.forEach((docSnap) => {
+          if (docSnap.id === 'rate_config') {
+            this.rateConfig = docSnap.data() as ProxyRateConfig;
+            localStorage.setItem(STORAGE_KEYS.RATE_CONFIG, JSON.stringify(this.rateConfig));
+            this.notify();
+          }
+        });
+      }, (err) => console.warn('Firestore Settings sync note:', err.message));
+
+    } catch (err) {
+      console.warn('Firebase sync initialization fallback to local:', err);
+    }
+  }
+
+  /**
+   * Seed default items to Firebase if cloud database is clean
+   */
+  private async seedInitialDataToFirebase() {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      
+      INITIAL_CATEGORIES.forEach((cat) => {
+        const ref = doc(db!, 'categories', cat.id);
+        batch.set(ref, cat);
+      });
+
+      INITIAL_PRODUCTS.forEach((prod) => {
+        const ref = doc(db!, 'products', prod.id);
+        batch.set(ref, prod);
+      });
+
+      INITIAL_ORDERS.forEach((ord) => {
+        const ref = doc(db!, 'orders', ord.id);
+        batch.set(ref, ord);
+      });
+
+      INITIAL_TRANSACTIONS.forEach((txn) => {
+        const ref = doc(db!, 'transactions', txn.id);
+        batch.set(ref, txn);
+      });
+
+      const rateRef = doc(db, 'settings', 'rate_config');
+      batch.set(rateRef, DEFAULT_RATE_CONFIG);
+
+      await batch.commit();
+      localStorage.setItem(STORAGE_KEYS.SEEDED, 'true');
+      console.log('✨ Successfully populated initial cloud seed data to Firestore.');
+    } catch (e) {
+      console.warn('Firebase seeding note:', e);
     }
   }
 
@@ -99,6 +241,10 @@ class ProxyStoreService {
     return () => {
       this.listeners = this.listeners.filter((l) => l !== listener);
     };
+  }
+
+  public getIsCloudConnected(): boolean {
+    return this.isFirebaseConnected;
   }
 
   // --- Orders ---
@@ -140,11 +286,11 @@ class ProxyStoreService {
       updatedAt: timestamp,
     };
 
+    // Update Local
     this.orders.unshift(newOrder);
-    this.saveOrders();
+    this.saveOrdersLocal();
 
-    // 自動新增一筆營收收入流水帳 (Cash Flow Transaction)
-    // 依據商品名稱或訂單來源識別渠道 (地攤 / 小餅 / 客製)
+    // Auto record revenue transaction
     let channel = '地攤';
     const firstItemName = newOrder.items[0]?.productName || '';
     if (firstItemName.includes('設定集') || firstItemName.includes('小餅') || firstItemName.includes('官方世界觀')) {
@@ -174,9 +320,15 @@ class ProxyStoreService {
     };
 
     this.transactions = [newTxn, ...this.transactions];
-    this.saveTransactions();
-
+    this.saveTransactionsLocal();
     this.notify();
+
+    // Cloud Sync to Firestore
+    if (db) {
+      setDoc(doc(db, 'orders', newOrder.id), newOrder).catch((e) => console.warn('Cloud save order error:', e));
+      setDoc(doc(db, 'transactions', newTxn.id), newTxn).catch((e) => console.warn('Cloud save txn error:', e));
+    }
+
     return newOrder;
   }
 
@@ -207,8 +359,13 @@ class ProxyStoreService {
     };
 
     this.orders[index] = updated;
-    this.saveOrders();
+    this.saveOrdersLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'orders', updated.id), updated).catch((e) => console.warn('Cloud update order status error:', e));
+    }
+
     return updated;
   }
 
@@ -224,8 +381,13 @@ class ProxyStoreService {
     };
 
     this.orders[index] = updated;
-    this.saveOrders();
+    this.saveOrdersLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'orders', updated.id), updated).catch((e) => console.warn('Cloud update order error:', e));
+    }
+
     return updated;
   }
 
@@ -233,14 +395,17 @@ class ProxyStoreService {
     const initialLen = this.orders.length;
     this.orders = this.orders.filter((o) => o.id !== orderId);
     if (this.orders.length !== initialLen) {
-      this.saveOrders();
+      this.saveOrdersLocal();
       this.notify();
+      if (db) {
+        deleteDoc(doc(db, 'orders', orderId)).catch((e) => console.warn('Cloud delete order error:', e));
+      }
       return true;
     }
     return false;
   }
 
-  private saveOrders() {
+  private saveOrdersLocal() {
     try {
       localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(this.orders));
     } catch (e) {
@@ -248,7 +413,7 @@ class ProxyStoreService {
     }
   }
 
-  // --- Products & Categories (店鋪與商品種類) ---
+  // --- Products & Categories ---
   public getProducts(): ProductItem[] {
     return [...this.products];
   }
@@ -268,8 +433,12 @@ class ProxyStoreService {
     } else {
       this.categories.push(category);
     }
-    this.saveCategories();
+    this.saveCategoriesLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'categories', category.id), category).catch((e) => console.warn('Cloud save category error:', e));
+    }
   }
 
   public toggleShopClosed(shopId: string, isClosed?: boolean, customNotice?: string): Category | null {
@@ -281,16 +450,23 @@ class ProxyStoreService {
     } else if (!cat.closedNotice) {
       cat.closedNotice = '手慢則無，俠士下次請早';
     }
-    this.saveCategories();
+    this.saveCategoriesLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud toggle closed error:', e));
+    }
     return cat;
   }
 
   public deleteCategory(categoryId: string): void {
     this.categories = this.categories.filter((c) => c.id !== categoryId);
-    // Also remove or reassign products under this category
-    this.saveCategories();
+    this.saveCategoriesLocal();
     this.notify();
+
+    if (db) {
+      deleteDoc(doc(db, 'categories', categoryId)).catch((e) => console.warn('Cloud delete category error:', e));
+    }
   }
 
   public addSubCategory(categoryId: string, subCategory: SubCategory): void {
@@ -299,8 +475,11 @@ class ProxyStoreService {
     const exists = cat.subCategories.find((s) => s.id === subCategory.id);
     if (!exists) {
       cat.subCategories.push(subCategory);
-      this.saveCategories();
+      this.saveCategoriesLocal();
       this.notify();
+      if (db) {
+        setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud add subcategory error:', e));
+      }
     }
   }
 
@@ -310,8 +489,11 @@ class ProxyStoreService {
     const index = cat.subCategories.findIndex((s) => s.id === subCategory.id);
     if (index >= 0) {
       cat.subCategories[index] = subCategory;
-      this.saveCategories();
+      this.saveCategoriesLocal();
       this.notify();
+      if (db) {
+        setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud update subcategory error:', e));
+      }
     }
   }
 
@@ -319,8 +501,11 @@ class ProxyStoreService {
     const cat = this.categories.find((c) => c.id === categoryId);
     if (!cat) return;
     cat.subCategories = cat.subCategories.filter((s) => s.id !== subCategoryId);
-    this.saveCategories();
+    this.saveCategoriesLocal();
     this.notify();
+    if (db) {
+      setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud delete subcategory error:', e));
+    }
   }
 
   public getProductsByCategory(categoryId: string, subCategoryId?: string): ProductItem[] {
@@ -338,17 +523,25 @@ class ProxyStoreService {
     } else {
       this.products.unshift(product);
     }
-    this.saveProducts();
+    this.saveProductsLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'products', product.id), product).catch((e) => console.warn('Cloud save product error:', e));
+    }
   }
 
   public deleteProduct(productId: string): void {
     this.products = this.products.filter((p) => p.id !== productId);
-    this.saveProducts();
+    this.saveProductsLocal();
     this.notify();
+
+    if (db) {
+      deleteDoc(doc(db, 'products', productId)).catch((e) => console.warn('Cloud delete product error:', e));
+    }
   }
 
-  private saveProducts() {
+  private saveProductsLocal() {
     try {
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(this.products));
     } catch (e) {
@@ -356,7 +549,7 @@ class ProxyStoreService {
     }
   }
 
-  private saveCategories() {
+  private saveCategoriesLocal() {
     try {
       localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(this.categories));
     } catch (e) {
@@ -377,6 +570,10 @@ class ProxyStoreService {
       console.error('Failed to save rate config', e);
     }
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'settings', 'rate_config'), this.rateConfig).catch((e) => console.warn('Cloud rate config error:', e));
+    }
   }
 
   public calculateTwd(rmbPrice: number): number {
@@ -424,8 +621,13 @@ class ProxyStoreService {
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
     this.transactions = [newTxn, ...this.transactions];
-    this.saveTransactions();
+    this.saveTransactionsLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'transactions', newTxn.id), newTxn).catch((e) => console.warn('Cloud save txn error:', e));
+    }
+
     return newTxn;
   }
 
@@ -433,8 +635,12 @@ class ProxyStoreService {
     const index = this.transactions.findIndex((t) => t.id === id);
     if (index === -1) return false;
     this.transactions[index] = { ...this.transactions[index], ...updates };
-    this.saveTransactions();
+    this.saveTransactionsLocal();
     this.notify();
+
+    if (db) {
+      setDoc(doc(db, 'transactions', id), this.transactions[index]).catch((e) => console.warn('Cloud update txn error:', e));
+    }
     return true;
   }
 
@@ -442,14 +648,17 @@ class ProxyStoreService {
     const prevLen = this.transactions.length;
     this.transactions = this.transactions.filter((t) => t.id !== id);
     if (this.transactions.length !== prevLen) {
-      this.saveTransactions();
+      this.saveTransactionsLocal();
       this.notify();
+      if (db) {
+        deleteDoc(doc(db, 'transactions', id)).catch((e) => console.warn('Cloud delete txn error:', e));
+      }
       return true;
     }
     return false;
   }
 
-  private saveTransactions() {
+  private saveTransactionsLocal() {
     try {
       localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
     } catch (e) {
@@ -463,11 +672,14 @@ class ProxyStoreService {
     this.categories = [...INITIAL_CATEGORIES];
     this.transactions = [...INITIAL_TRANSACTIONS];
     this.rateConfig = DEFAULT_RATE_CONFIG;
-    this.saveOrders();
-    this.saveProducts();
-    this.saveCategories();
-    this.saveTransactions();
+    this.saveOrdersLocal();
+    this.saveProductsLocal();
+    this.saveCategoriesLocal();
+    this.saveTransactionsLocal();
     this.notify();
+    if (db) {
+      this.seedInitialDataToFirebase();
+    }
   }
 }
 
