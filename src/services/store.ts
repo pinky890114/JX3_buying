@@ -242,37 +242,61 @@ class ProxyStoreService {
 
     try {
       console.log('🔄 開始同步全站資料至 Firebase Firestore...');
-      const batch = writeBatch(db);
 
-      // Categories
-      this.categories.forEach((cat) => {
-        const ref = doc(db!, 'categories', cat.id);
-        batch.set(ref, sanitizeForFirestore(cat));
-      });
+      // Attempt 1: Try batch write
+      try {
+        const batch = writeBatch(db);
 
-      // Products
-      this.products.forEach((prod) => {
-        const ref = doc(db!, 'products', prod.id);
-        batch.set(ref, sanitizeForFirestore(prod));
-      });
+        // Categories
+        this.categories.forEach((cat) => {
+          const ref = doc(db!, 'categories', cat.id);
+          batch.set(ref, sanitizeForFirestore(cat));
+        });
 
-      // Orders
-      this.orders.forEach((ord) => {
-        const ref = doc(db!, 'orders', ord.id);
-        batch.set(ref, sanitizeForFirestore(ord));
-      });
+        // Products
+        this.products.forEach((prod) => {
+          const ref = doc(db!, 'products', prod.id);
+          batch.set(ref, sanitizeForFirestore(prod));
+        });
 
-      // Transactions
-      this.transactions.forEach((txn) => {
-        const ref = doc(db!, 'transactions', txn.id);
-        batch.set(ref, sanitizeForFirestore(txn));
-      });
+        // Orders
+        this.orders.forEach((ord) => {
+          const ref = doc(db!, 'orders', ord.id);
+          batch.set(ref, sanitizeForFirestore(ord));
+        });
 
-      // Rate config
-      const rateRef = doc(db, 'settings', 'rate_config');
-      batch.set(rateRef, sanitizeForFirestore(this.rateConfig));
+        // Transactions
+        this.transactions.forEach((txn) => {
+          const ref = doc(db!, 'transactions', txn.id);
+          batch.set(ref, sanitizeForFirestore(txn));
+        });
 
-      await batch.commit();
+        // Rate config
+        const rateRef = doc(db, 'settings', 'rate_config');
+        batch.set(rateRef, sanitizeForFirestore(this.rateConfig));
+
+        await batch.commit();
+      } catch (batchErr) {
+        console.warn('Batch commit failed, falling back to parallel individual writes:', batchErr);
+        // Fallback: Individual doc setDoc writes
+        const writePromises: Promise<any>[] = [];
+        this.categories.forEach((cat) => {
+          writePromises.push(setDoc(doc(db!, 'categories', cat.id), sanitizeForFirestore(cat)));
+        });
+        this.products.forEach((prod) => {
+          writePromises.push(setDoc(doc(db!, 'products', prod.id), sanitizeForFirestore(prod)));
+        });
+        this.orders.forEach((ord) => {
+          writePromises.push(setDoc(doc(db!, 'orders', ord.id), sanitizeForFirestore(ord)));
+        });
+        this.transactions.forEach((txn) => {
+          writePromises.push(setDoc(doc(db!, 'transactions', txn.id), sanitizeForFirestore(txn)));
+        });
+        writePromises.push(setDoc(doc(db, 'settings', 'rate_config'), sanitizeForFirestore(this.rateConfig)));
+
+        await Promise.all(writePromises);
+      }
+
       this.isFirebaseConnected = true;
       this.syncError = null;
       this.recordSyncSuccess();
@@ -573,6 +597,25 @@ class ProxyStoreService {
     const index = cat.subCategories.findIndex((s) => s.id === subCategory.id);
     if (index >= 0) {
       cat.subCategories[index] = subCategory;
+
+      // Auto propagate subcategory description to all products belonging to this category
+      if (subCategory.description !== undefined) {
+        let hasProductChanges = false;
+        this.products.forEach((p) => {
+          if (p.categoryId === categoryId && p.subCategoryId === subCategory.id) {
+            p.description = subCategory.description || '';
+            hasProductChanges = true;
+            if (db) {
+              setDoc(doc(db, 'products', p.id), sanitizeForFirestore(p))
+                .catch((e) => console.warn('Cloud sync product desc error:', e));
+            }
+          }
+        });
+        if (hasProductChanges) {
+          this.saveProductsLocal();
+        }
+      }
+
       this.saveCategoriesLocal();
       this.notify();
       if (db) {

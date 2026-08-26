@@ -582,32 +582,42 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                             return (
                               <div
                                 key={subCat.id}
-                                className="p-3 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] flex items-center justify-between gap-2"
+                                className="p-3 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] flex flex-col justify-between gap-2"
                               >
-                                <div className="truncate">
+                                <div className="flex items-center justify-between gap-2">
                                   <div className="text-xs font-bold text-[#1E2530] truncate">
                                     {subCat.name}
                                   </div>
-                                  <div className="text-[10px] text-[#6B7280]">
-                                    {countInSubCat} 款商品
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => handleOpenEditCategory(shop.id, subCat)}
+                                      className="p-1.5 rounded bg-white hover:bg-[#EDE7DC] text-[#4A5568] border border-[#DDD5C7] text-[11px] cursor-pointer"
+                                      title="編輯種類名稱與說明"
+                                    >
+                                      <Edit3 className="w-3 h-3 text-[#C5922E]" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteCategoryPrompt(shop.id, subCat.id, subCat.name)}
+                                      className="p-1.5 rounded bg-white hover:bg-[#FFEBEB] text-[#A63434] border border-[#E8C4C4] text-[11px] cursor-pointer"
+                                      title="刪除種類"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
                                   </div>
                                 </div>
 
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={() => handleOpenEditCategory(shop.id, subCat)}
-                                    className="p-1.5 rounded bg-white hover:bg-[#EDE7DC] text-[#4A5568] border border-[#DDD5C7] text-[11px] cursor-pointer"
-                                    title="編輯種類名稱"
-                                  >
-                                    <Edit3 className="w-3 h-3 text-[#C5922E]" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteCategoryPrompt(shop.id, subCat.id, subCat.name)}
-                                    className="p-1.5 rounded bg-white hover:bg-[#FFEBEB] text-[#A63434] border border-[#E8C4C4] text-[11px] cursor-pointer"
-                                    title="刪除種類"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                <div 
+                                  onClick={() => handleOpenEditCategory(shop.id, subCat)}
+                                  className="p-2 rounded-lg bg-white border border-[#DDD5C7] text-[11px] text-[#4A5568] hover:border-[#C5922E] cursor-pointer transition-colors"
+                                  title="點擊修改前台商品說明"
+                                >
+                                  <div className="flex items-center justify-between text-[#C5922E] font-bold text-[10px] mb-0.5">
+                                    <span>ⓘ 前台商品說明：</span>
+                                    <span className="text-[10px] text-[#6B7280] font-normal">{countInSubCat} 款商品</span>
+                                  </div>
+                                  <p className="line-clamp-2 leading-relaxed text-[#1E2530]">
+                                    {subCat.description || '詳見dc (未設定自訂說明)'}
+                                  </p>
                                 </div>
                               </div>
                             );
@@ -1342,15 +1352,55 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-[#1E2530]">種類描述說明 (選填)</label>
-                <input
-                  type="text"
-                  placeholder="例如: 高質感防水手帳貼紙、Q版全門派"
+              <div className="space-y-1.5 p-3 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7]">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <label className="font-extrabold text-[#1E2530] flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-white border border-[#C5922E] flex items-center justify-center text-xs font-bold text-[#C5922E]">i</span>
+                    <span>種類描述說明 / 前台商品說明</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCategoryDesc('詳見dc')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#223147] border border-[#DDD5C7] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【詳見dc】
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryDesc('預售商品，等待期約120天。滿1000送貝殼光透卡盲抽*4，滿2000送特典。')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#1D4ED8] border border-[#BFDBFE] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【預售範本】
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryDesc('官方正品現貨，下單後約 7-14 天抵台出貨')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#223147] border border-[#DDD5C7] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【現貨出貨】
+                    </button>
+                    {categoryDesc && (
+                      <button
+                        type="button"
+                        onClick={() => setCategoryDesc('')}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-[#FFF2F0] text-[#CF1322] border border-[#FFCCC7] text-[11px] font-bold cursor-pointer"
+                      >
+                        清除
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <textarea
+                  rows={3}
+                  placeholder="在此填寫本商品種類的說明（例如：預售出貨天數、滿額贈送活動等，將直接同步顯示於前台「ⓘ 商品說明」框）..."
                   value={categoryDesc}
                   onChange={(e) => setCategoryDesc(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] text-[#1E2530] outline-none focus:border-[#C5922E]"
+                  className="w-full p-2.5 rounded-xl bg-white border border-[#DDD5C7] text-[#1E2530] outline-none resize-none focus:border-[#C5922E] text-xs sm:text-sm font-medium leading-relaxed"
                 />
+                <p className="text-[11px] text-[#6B7280]">
+                  💡 儲存後，前台切換到此商品種類時，上方的<strong>「ⓘ 商品說明」</strong>會自動顯示此處設定的內容。
+                </p>
               </div>
 
               <div className="pt-3 border-t border-[#DDD5C7] flex justify-end gap-2">

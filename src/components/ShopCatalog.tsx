@@ -4,7 +4,7 @@ import { proxyStore } from '../services/store';
 import { 
   ShoppingBag, ShoppingCart, Check, Sparkles, Layers, ShieldCheck, 
   HelpCircle, Plus, Minus, Eye, ArrowRight, Tag, Info, AlertCircle, ArrowLeft, Store, CheckCircle2,
-  Lock, Ban
+  Lock, Ban, ZoomIn, X
 } from 'lucide-react';
 
 interface ShopCatalogProps {
@@ -52,6 +52,12 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     currentShop?.subCategories[0]?.id || ''
   );
+
+  const currentSubCategory = useMemo(() => {
+    return currentShop?.subCategories?.find((s) => s.id === selectedCategoryId);
+  }, [currentShop, selectedCategoryId]);
+
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; title: string } | null>(null);
 
   // When Shop changes, auto-select first Product Category
   const handleSelectShop = (shopId: string) => {
@@ -461,8 +467,8 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                 </div>
                 <span>商品說明</span>
               </div>
-              <div className="text-sm text-[#4A5568] pl-7 whitespace-pre-line leading-relaxed">
-                {matchingProducts[0]?.description || '詳見dc'}
+              <div className="text-sm text-[#4A5568] pl-7 whitespace-pre-line leading-relaxed font-medium">
+                {currentSubCategory?.description || matchingProducts[0]?.description || '詳見dc'}
               </div>
             </div>
 
@@ -498,12 +504,21 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#DDD5C7]">
                     <div className="flex items-center gap-3">
                       {prod.coverImage && (
-                        <img
-                          src={prod.coverImage}
-                          alt={prod.name}
-                          referrerPolicy="no-referrer"
-                          className="w-10 h-10 rounded-xl object-cover border border-[#DDD5C7] shrink-0"
-                        />
+                        <div
+                          onClick={() => setEnlargedImage({ url: prod.coverImage || '', title: prod.name })}
+                          className="w-10 h-10 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] overflow-hidden shrink-0 relative cursor-pointer group shadow-2xs hover:border-[#C5922E]"
+                          title="點擊放大商品封面大圖"
+                        >
+                          <img
+                            src={prod.coverImage}
+                            alt={prod.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                            <ZoomIn className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
                       )}
                       <div>
                         <div className="flex items-center gap-2">
@@ -599,13 +614,20 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                             {/* Left: Thumbnail & Name & Price */}
                             <div className="flex items-center gap-3 min-w-0">
                               {/* Image preview */}
-                              <div className="w-12 h-12 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] overflow-hidden shrink-0 relative">
+                              <div 
+                                onClick={() => setEnlargedImage({ url: opt.image || prod.coverImage || '', title: `${prod.name} - ${opt.name}` })}
+                                className="w-12 h-12 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] overflow-hidden shrink-0 relative cursor-pointer group shadow-2xs hover:border-[#C5922E] transition-all"
+                                title="點擊放大查看規格大圖"
+                              >
                                 <img
                                   src={opt.image || prod.coverImage}
                                   alt={opt.name}
                                   referrerPolicy="no-referrer"
-                                  className={`w-full h-full object-cover ${isCardDisabled ? 'grayscale-40 opacity-70' : ''}`}
+                                  className={`w-full h-full object-cover group-hover:scale-105 transition-transform ${isCardDisabled ? 'grayscale-40 opacity-70' : ''}`}
                                 />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                  <ZoomIn className="w-4 h-4 drop-shadow-md" />
+                                </div>
                                 {isCurrentShopClosed ? (
                                   <div className="absolute inset-0 bg-[#A63434]/70 flex items-center justify-center text-[10px] font-extrabold text-white text-center px-1">
                                     閉店
@@ -733,6 +755,45 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
               <span>直接填單結帳</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Image Modal */}
+      {enlargedImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setEnlargedImage(null)}
+        >
+          <div 
+            className="relative max-w-2xl w-full bg-[#1E2530] rounded-3xl overflow-hidden border border-[#C5922E]/40 shadow-2xl p-4 sm:p-6 flex flex-col items-center gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between pb-2 border-b border-white/10">
+              <h3 className="text-white font-bold text-sm sm:text-base truncate">
+                {enlargedImage.title}
+              </h3>
+              <button
+                onClick={() => setEnlargedImage(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="關閉"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative rounded-2xl overflow-hidden bg-black/40 border border-white/10 max-h-[75vh] flex items-center justify-center p-2 w-full">
+              <img
+                src={enlargedImage.url}
+                alt={enlargedImage.title}
+                referrerPolicy="no-referrer"
+                className="max-h-[70vh] w-auto object-contain rounded-xl shadow-lg"
+              />
+            </div>
+
+            <div className="text-xs text-gray-400">
+              點擊圖片外側或右上角 X 即可關閉大圖
+            </div>
           </div>
         </div>
       )}
