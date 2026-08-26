@@ -48,6 +48,7 @@ class ProxyStoreService {
   private isFirebaseConnected: boolean = false;
   private syncError: string | null = null;
   private lastSyncTime: string | null = null;
+  private hasInitializedCloud: boolean = false;
 
   constructor() {
     this.initLocal();
@@ -62,7 +63,6 @@ class ProxyStoreService {
         this.orders = JSON.parse(savedOrders);
       } else {
         this.orders = [...INITIAL_ORDERS];
-        this.saveOrdersLocal();
       }
 
       // Load Products from cache
@@ -71,7 +71,6 @@ class ProxyStoreService {
         this.products = JSON.parse(savedProducts);
       } else {
         this.products = [...INITIAL_PRODUCTS];
-        this.saveProductsLocal();
       }
 
       // Load Categories from cache
@@ -80,7 +79,6 @@ class ProxyStoreService {
         this.categories = JSON.parse(savedCategories);
       } else {
         this.categories = [...INITIAL_CATEGORIES];
-        this.saveCategoriesLocal();
       }
 
       // Load Transactions from cache
@@ -89,7 +87,6 @@ class ProxyStoreService {
         this.transactions = JSON.parse(savedTransactions);
       } else {
         this.transactions = [...INITIAL_TRANSACTIONS];
-        this.saveTransactionsLocal();
       }
 
       // Load Rate Config from cache
@@ -124,30 +121,36 @@ class ProxyStoreService {
     }
 
     try {
-      // 1. Subscribe to Orders
-      const ordersCol = collection(db, 'orders');
-      onSnapshot(ordersCol, (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudOrders: Order[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudOrders.push(docSnap.data() as Order);
-          });
-          cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          this.orders = cloudOrders;
-          this.saveOrdersLocal();
-          this.isFirebaseConnected = true;
-          this.syncError = null;
-          this.recordSyncSuccess();
-          this.notify();
-        } else {
-          // If remote is empty, seed our current dataset to Firestore
-          this.syncAllToFirebase();
+      console.log('🔌 Connecting to Firebase Firestore real-time streams...');
+
+      // Check if cloud has products / categories; if totally empty, seed them once
+      const checkInitialSeed = async () => {
+        try {
+          const productsSnap = await getDocs(collection(db!, 'products'));
+          if (productsSnap.empty) {
+            console.log('📦 Firestore is empty, auto-seeding initial products & categories to cloud...');
+            await this.syncAllToFirebase();
+          }
+        } catch (e: any) {
+          console.warn('Check seed warning:', e?.message || e);
         }
-      }, (err) => {
-        console.warn('Firestore Orders sync error:', err.message);
-        this.syncError = err.message;
-        this.notify();
-      });
+      };
+      checkInitialSeed();
+
+      // 1. Subscribe to Categories
+      const categoriesCol = collection(db, 'categories');
+      onSnapshot(categoriesCol, (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudCategories: Category[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudCategories.push(docSnap.data() as Category);
+          });
+          this.categories = cloudCategories;
+          this.saveCategoriesLocal();
+          this.isFirebaseConnected = true;
+          this.notify();
+        }
+      }, (err) => console.warn('Firestore Categories sync error:', err.message));
 
       // 2. Subscribe to Products
       const productsCol = collection(db, 'products');
@@ -164,20 +167,27 @@ class ProxyStoreService {
         }
       }, (err) => console.warn('Firestore Products sync error:', err.message));
 
-      // 3. Subscribe to Categories
-      const categoriesCol = collection(db, 'categories');
-      onSnapshot(categoriesCol, (snapshot) => {
+      // 3. Subscribe to Orders
+      const ordersCol = collection(db, 'orders');
+      onSnapshot(ordersCol, (snapshot) => {
         if (!snapshot.empty) {
-          const cloudCategories: Category[] = [];
+          const cloudOrders: Order[] = [];
           snapshot.forEach((docSnap) => {
-            cloudCategories.push(docSnap.data() as Category);
+            cloudOrders.push(docSnap.data() as Order);
           });
-          this.categories = cloudCategories;
-          this.saveCategoriesLocal();
+          cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          this.orders = cloudOrders;
+          this.saveOrdersLocal();
           this.isFirebaseConnected = true;
+          this.syncError = null;
+          this.recordSyncSuccess();
           this.notify();
         }
-      }, (err) => console.warn('Firestore Categories sync error:', err.message));
+      }, (err) => {
+        console.warn('Firestore Orders sync error:', err.message);
+        this.syncError = err.message;
+        this.notify();
+      });
 
       // 4. Subscribe to Transactions
       const txnsCol = collection(db, 'transactions');

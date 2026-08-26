@@ -29,6 +29,18 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
   // Step 1: Selected Shop (店鋪)
   const [selectedShopId, setSelectedShopId] = useState<string>(categories[0]?.id || '');
 
+  // Keep selectedShopId synchronized when categories change (e.g. cloud sync)
+  useEffect(() => {
+    if (categories.length > 0) {
+      if (!selectedShopId || !categories.some((c) => c.id === selectedShopId)) {
+        setSelectedShopId(categories[0].id);
+        if (categories[0].subCategories?.length > 0) {
+          setSelectedCategoryId(categories[0].subCategories[0].id);
+        }
+      }
+    }
+  }, [categories, selectedShopId]);
+
   const currentShop = useMemo(() => {
     return categories.find((c) => c.id === selectedShopId) || categories[0];
   }, [categories, selectedShopId]);
