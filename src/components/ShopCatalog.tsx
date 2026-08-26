@@ -510,8 +510,16 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
 
                     {/* Spec notice for this specific product */}
                     {prod.specNotice && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs font-extrabold text-[#CF1322] shadow-2xs shrink-0 self-start sm:self-auto">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#CF1322]" />
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border text-xs font-extrabold shadow-2xs shrink-0 self-start sm:self-auto ${
+                        prod.specNotice.includes('預售') || prod.specNotice.includes('預購')
+                          ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1D4ED8]'
+                          : 'bg-[#FFF2F0] border-[#FFCCC7] text-[#CF1322]'
+                      }`}>
+                        <AlertCircle className={`w-3.5 h-3.5 shrink-0 ${
+                          prod.specNotice.includes('預售') || prod.specNotice.includes('預購')
+                            ? 'text-[#1D4ED8]'
+                            : 'text-[#CF1322]'
+                        }`} />
                         <span>
                           {prod.specNotice.startsWith('【') ? prod.specNotice : `【${prod.specNotice}】`}
                         </span>
@@ -522,8 +530,16 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
 
                 {/* Single Product Spec Notice (when only 1 product) */}
                 {matchingProducts.length === 1 && prod.specNotice && (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF2F0] border border-[#FFCCC7] text-xs font-extrabold text-[#CF1322] shadow-2xs">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[#CF1322]" />
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border text-xs font-extrabold shadow-2xs ${
+                    prod.specNotice.includes('預售') || prod.specNotice.includes('預購')
+                      ? 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1D4ED8]'
+                      : 'bg-[#FFF2F0] border-[#FFCCC7] text-[#CF1322]'
+                  }`}>
+                    <AlertCircle className={`w-3.5 h-3.5 shrink-0 ${
+                      prod.specNotice.includes('預售') || prod.specNotice.includes('預購')
+                        ? 'text-[#1D4ED8]'
+                        : 'text-[#CF1322]'
+                    }`} />
                     <span>
                       {prod.specNotice.startsWith('【') ? prod.specNotice : `【${prod.specNotice}】`}
                     </span>
@@ -601,7 +617,11 @@ export const ShopCatalog: React.FC<ShopCatalogProps> = ({
                                     【手慢則無，俠士下次請早】
                                   </div>
                                 ) : opt.statusNote ? (
-                                  <div className="text-[11px] font-bold text-[#CF1322] leading-tight">
+                                  <div className={`text-[11px] font-bold leading-tight ${
+                                    opt.statusNote.includes('預售') || opt.statusNote.includes('預購')
+                                      ? 'text-[#1D4ED8]'
+                                      : 'text-[#CF1322]'
+                                  }`}>
                                     {opt.statusNote.startsWith('【') ? opt.statusNote : `【${opt.statusNote}】`}
                                   </div>
                                 ) : null}

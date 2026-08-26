@@ -875,6 +875,13 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                       >
                         + 填入【已完售，預計年末或明年初再販】
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setSpecNotice('預售商品，請耐心等待')}
+                        className="px-2.5 py-1 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1D4ED8] border border-[#BFDBFE] text-xs font-bold cursor-pointer transition-colors"
+                      >
+                        + 填入【預售商品，請耐心等待】
+                      </button>
                       {specNotice && (
                         <button
                           type="button"
@@ -1030,8 +1037,28 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                                 />
                               </div>
 
-                              {/* Quick Fill Button for Sold Out Note */}
-                              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                              {/* Quick Fill Buttons for Status Note */}
+                              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newGroups = [...specGroups];
+                                    const curr = newGroups[gIdx].options[oIdx];
+                                    if (curr.statusNote === '預售商品，請耐心等待') {
+                                      curr.statusNote = '';
+                                    } else {
+                                      curr.statusNote = '預售商品，請耐心等待';
+                                    }
+                                    setSpecGroups(newGroups);
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                                    opt.statusNote === '預售商品，請耐心等待'
+                                      ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
+                                      : 'bg-white hover:bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
+                                  }`}
+                                >
+                                  {opt.statusNote === '預售商品，請耐心等待' ? '✓ 預售中' : '+ 填入【預售】'}
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1046,13 +1073,13 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                                     }
                                     setSpecGroups(newGroups);
                                   }}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                                  className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
                                     isSoldOut
                                       ? 'bg-[#CF1322] text-white border-[#CF1322]'
                                       : 'bg-white hover:bg-[#FFF2F0] text-[#CF1322] border-[#FFCCC7]'
                                   }`}
                                 >
-                                  {isSoldOut ? '✓ 已設完售' : '標記【已完售】'}
+                                  {isSoldOut ? '✓ 已設完售' : '標記【完售】'}
                                 </button>
                               </div>
                             </div>
