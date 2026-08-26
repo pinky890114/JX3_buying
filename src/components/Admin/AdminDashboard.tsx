@@ -35,6 +35,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isRateSettingsOpen, setIsRateSettingsOpen] = useState<boolean>(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState<boolean>(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState(proxyStore.getSyncStatus());
 
   // Rate inputs state
   const [exchangeRateInput, setExchangeRateInput] = useState(rateConfig.exchangeRate.toString());
@@ -47,9 +49,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setOrders(proxyStore.getOrders());
       setCategories(proxyStore.getCategories());
       setProducts(proxyStore.getProducts());
+      setSyncStatus(proxyStore.getSyncStatus());
     });
     return () => unsubscribe();
   }, []);
+
+  const handleManualSync = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await proxyStore.syncAllToFirebase();
+      setToastMessage(res.message);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (e: any) {
+      setToastMessage(`同步失敗: ${e.message}`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -134,9 +151,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <ShieldCheck className="w-3.5 h-3.5 text-[#C5922E]" />
               <span>管理員專屬後台</span>
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#EBF7F0] text-[#2E8B57] border border-[#A3D9B8] flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-[#2E8B57] animate-pulse" />
-              <span>Firebase 雲端即時同步</span>
+            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
+              syncStatus.isConnected
+                ? 'bg-[#EBF7F0] text-[#2E8B57] border-[#A3D9B8]'
+                : syncStatus.error
+                ? 'bg-[#FFF2F0] text-[#CF1322] border-[#FFCCC7]'
+                : 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                syncStatus.isConnected ? 'bg-[#2E8B57] animate-pulse' : 'bg-[#CF1322]'
+              }`} />
+              <span>{syncStatus.isConnected ? 'Firebase 雲端即時同步中' : syncStatus.error ? '雲端同步異常' : '連線中...'}</span>
+              {syncStatus.lastSyncTime && (
+                <span className="text-[10px] opacity-75 font-normal ml-0.5">({syncStatus.lastSyncTime})</span>
+              )}
             </span>
             {adminUser?.isDevBypass && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FAF7F2] text-[#6B7280] border border-[#DDD5C7]">
@@ -153,6 +181,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncingCloud}
+            className="px-3.5 py-2 rounded-xl bg-[#223147] hover:bg-[#1A2637] text-[#E2B755] text-xs font-bold border border-[#C5922E]/50 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+            title="將目前所有商品、分類與訂單強制備份寫入 Firebase Firestore"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? '雲端同步中...' : '一鍵同步到 Firebase'}</span>
+          </button>
+
           <button
             onClick={() => setIsRateSettingsOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-[#FAF7F2] hover:bg-[#EAE4D9] text-[#223147] text-xs font-semibold border border-[#DDD5C7] flex items-center gap-1.5 transition-colors cursor-pointer"

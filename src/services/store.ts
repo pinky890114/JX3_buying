@@ -18,7 +18,7 @@ const STORAGE_KEYS = {
   RATE_CONFIG: 'xsj_proxy_rate_config_v1',
   ADMIN_AUTH: 'xsj_proxy_admin_auth_v1',
   TRANSACTIONS: 'xsj_proxy_transactions_v1',
-  SEEDED: 'xsj_proxy_firebase_seeded_v1',
+  LAST_SYNC: 'xsj_proxy_last_cloud_sync_v1',
 };
 
 export interface AdminUser {
@@ -27,6 +27,13 @@ export interface AdminUser {
   email: string;
   photoURL?: string;
   isDevBypass?: boolean;
+}
+
+/**
+ * Strips all `undefined` values recursively so Firestore never rejects the write.
+ */
+function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
 }
 
 // Unified Store syncing between Local Cache & Firebase Firestore in Real-Time
@@ -39,6 +46,8 @@ class ProxyStoreService {
   private currentAdmin: AdminUser | null = null;
   private listeners: (() => void)[] = [];
   private isFirebaseConnected: boolean = false;
+  private syncError: string | null = null;
+  private lastSyncTime: string | null = null;
 
   constructor() {
     this.initLocal();
@@ -94,6 +103,8 @@ class ProxyStoreService {
       if (savedAuth) {
         this.currentAdmin = JSON.parse(savedAuth);
       }
+
+      this.lastSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
     } catch (err) {
       console.warn('Local cache load fallback:', err);
       this.orders = [...INITIAL_ORDERS];
@@ -121,17 +132,22 @@ class ProxyStoreService {
           snapshot.forEach((docSnap) => {
             cloudOrders.push(docSnap.data() as Order);
           });
-          // Sort descending by creation date
           cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
           this.orders = cloudOrders;
           this.saveOrdersLocal();
           this.isFirebaseConnected = true;
+          this.syncError = null;
+          this.recordSyncSuccess();
           this.notify();
-        } else if (!localStorage.getItem(STORAGE_KEYS.SEEDED)) {
-          // Seed initial orders to cloud
-          this.seedInitialDataToFirebase();
+        } else {
+          // If remote is empty, seed our current dataset to Firestore
+          this.syncAllToFirebase();
         }
-      }, (err) => console.warn('Firestore Orders sync note:', err.message));
+      }, (err) => {
+        console.warn('Firestore Orders sync error:', err.message);
+        this.syncError = err.message;
+        this.notify();
+      });
 
       // 2. Subscribe to Products
       const productsCol = collection(db, 'products');
@@ -143,9 +159,10 @@ class ProxyStoreService {
           });
           this.products = cloudProducts;
           this.saveProductsLocal();
+          this.isFirebaseConnected = true;
           this.notify();
         }
-      }, (err) => console.warn('Firestore Products sync note:', err.message));
+      }, (err) => console.warn('Firestore Products sync error:', err.message));
 
       // 3. Subscribe to Categories
       const categoriesCol = collection(db, 'categories');
@@ -157,9 +174,10 @@ class ProxyStoreService {
           });
           this.categories = cloudCategories;
           this.saveCategoriesLocal();
+          this.isFirebaseConnected = true;
           this.notify();
         }
-      }, (err) => console.warn('Firestore Categories sync note:', err.message));
+      }, (err) => console.warn('Firestore Categories sync error:', err.message));
 
       // 4. Subscribe to Transactions
       const txnsCol = collection(db, 'transactions');
@@ -172,9 +190,10 @@ class ProxyStoreService {
           cloudTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
           this.transactions = cloudTxns;
           this.saveTransactionsLocal();
+          this.isFirebaseConnected = true;
           this.notify();
         }
-      }, (err) => console.warn('Firestore Transactions sync note:', err.message));
+      }, (err) => console.warn('Firestore Transactions sync error:', err.message));
 
       // 5. Subscribe to Settings (Rate Config)
       const settingsCol = collection(db, 'settings');
@@ -183,52 +202,78 @@ class ProxyStoreService {
           if (docSnap.id === 'rate_config') {
             this.rateConfig = docSnap.data() as ProxyRateConfig;
             localStorage.setItem(STORAGE_KEYS.RATE_CONFIG, JSON.stringify(this.rateConfig));
+            this.isFirebaseConnected = true;
             this.notify();
           }
         });
-      }, (err) => console.warn('Firestore Settings sync note:', err.message));
+      }, (err) => console.warn('Firestore Settings sync error:', err.message));
 
-    } catch (err) {
-      console.warn('Firebase sync initialization fallback to local:', err);
+    } catch (err: any) {
+      console.warn('Firebase sync initialization fallback to local:', err?.message || err);
+      this.syncError = err?.message || '連線失敗';
     }
   }
 
-  /**
-   * Seed default items to Firebase if cloud database is clean
-   */
-  private async seedInitialDataToFirebase() {
-    if (!db) return;
+  private recordSyncSuccess() {
+    const time = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    this.lastSyncTime = time;
     try {
+      localStorage.setItem(STORAGE_KEYS.LAST_SYNC, time);
+    } catch {}
+  }
+
+  /**
+   * Force sync all local data to Firebase Firestore (Push)
+   */
+  public async syncAllToFirebase(): Promise<{ success: boolean; message: string }> {
+    if (!db) {
+      return { success: false, message: 'Firebase 未完成初始化' };
+    }
+
+    try {
+      console.log('🔄 開始同步全站資料至 Firebase Firestore...');
       const batch = writeBatch(db);
-      
-      INITIAL_CATEGORIES.forEach((cat) => {
+
+      // Categories
+      this.categories.forEach((cat) => {
         const ref = doc(db!, 'categories', cat.id);
-        batch.set(ref, cat);
+        batch.set(ref, sanitizeForFirestore(cat));
       });
 
-      INITIAL_PRODUCTS.forEach((prod) => {
+      // Products
+      this.products.forEach((prod) => {
         const ref = doc(db!, 'products', prod.id);
-        batch.set(ref, prod);
+        batch.set(ref, sanitizeForFirestore(prod));
       });
 
-      INITIAL_ORDERS.forEach((ord) => {
+      // Orders
+      this.orders.forEach((ord) => {
         const ref = doc(db!, 'orders', ord.id);
-        batch.set(ref, ord);
+        batch.set(ref, sanitizeForFirestore(ord));
       });
 
-      INITIAL_TRANSACTIONS.forEach((txn) => {
+      // Transactions
+      this.transactions.forEach((txn) => {
         const ref = doc(db!, 'transactions', txn.id);
-        batch.set(ref, txn);
+        batch.set(ref, sanitizeForFirestore(txn));
       });
 
+      // Rate config
       const rateRef = doc(db, 'settings', 'rate_config');
-      batch.set(rateRef, DEFAULT_RATE_CONFIG);
+      batch.set(rateRef, sanitizeForFirestore(this.rateConfig));
 
       await batch.commit();
-      localStorage.setItem(STORAGE_KEYS.SEEDED, 'true');
-      console.log('✨ Successfully populated initial cloud seed data to Firestore.');
-    } catch (e) {
-      console.warn('Firebase seeding note:', e);
+      this.isFirebaseConnected = true;
+      this.syncError = null;
+      this.recordSyncSuccess();
+      this.notify();
+      console.log('✅ 全站資料已成功同步儲存至 Firebase Firestore！');
+      return { success: true, message: `已成功將 ${this.products.length} 項商品、${this.orders.length} 筆訂單同步至 Firebase 雲端！` };
+    } catch (err: any) {
+      console.error('Firebase syncAll error:', err);
+      this.syncError = err?.message || '同步寫入失敗';
+      this.notify();
+      return { success: false, message: `同步失敗: ${err?.message || '未知錯誤'}` };
     }
   }
 
@@ -245,6 +290,14 @@ class ProxyStoreService {
 
   public getIsCloudConnected(): boolean {
     return this.isFirebaseConnected;
+  }
+
+  public getSyncStatus(): { isConnected: boolean; lastSyncTime: string | null; error: string | null } {
+    return {
+      isConnected: this.isFirebaseConnected,
+      lastSyncTime: this.lastSyncTime,
+      error: this.syncError,
+    };
   }
 
   // --- Orders ---
@@ -323,10 +376,17 @@ class ProxyStoreService {
     this.saveTransactionsLocal();
     this.notify();
 
-    // Cloud Sync to Firestore
+    // Cloud Sync to Firestore with Sanitizer
     if (db) {
-      setDoc(doc(db, 'orders', newOrder.id), newOrder).catch((e) => console.warn('Cloud save order error:', e));
-      setDoc(doc(db, 'transactions', newTxn.id), newTxn).catch((e) => console.warn('Cloud save txn error:', e));
+      setDoc(doc(db, 'orders', newOrder.id), sanitizeForFirestore(newOrder))
+        .then(() => {
+          this.isFirebaseConnected = true;
+          this.recordSyncSuccess();
+        })
+        .catch((e) => console.warn('Cloud save order error:', e));
+
+      setDoc(doc(db, 'transactions', newTxn.id), sanitizeForFirestore(newTxn))
+        .catch((e) => console.warn('Cloud save txn error:', e));
     }
 
     return newOrder;
@@ -363,7 +423,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'orders', updated.id), updated).catch((e) => console.warn('Cloud update order status error:', e));
+      setDoc(doc(db, 'orders', updated.id), sanitizeForFirestore(updated))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud update order status error:', e));
     }
 
     return updated;
@@ -385,7 +447,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'orders', updated.id), updated).catch((e) => console.warn('Cloud update order error:', e));
+      setDoc(doc(db, 'orders', updated.id), sanitizeForFirestore(updated))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud update order error:', e));
     }
 
     return updated;
@@ -398,7 +462,9 @@ class ProxyStoreService {
       this.saveOrdersLocal();
       this.notify();
       if (db) {
-        deleteDoc(doc(db, 'orders', orderId)).catch((e) => console.warn('Cloud delete order error:', e));
+        deleteDoc(doc(db, 'orders', orderId))
+          .then(() => this.recordSyncSuccess())
+          .catch((e) => console.warn('Cloud delete order error:', e));
       }
       return true;
     }
@@ -437,7 +503,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'categories', category.id), category).catch((e) => console.warn('Cloud save category error:', e));
+      setDoc(doc(db, 'categories', category.id), sanitizeForFirestore(category))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud save category error:', e));
     }
   }
 
@@ -454,7 +522,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud toggle closed error:', e));
+      setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud toggle closed error:', e));
     }
     return cat;
   }
@@ -465,7 +535,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      deleteDoc(doc(db, 'categories', categoryId)).catch((e) => console.warn('Cloud delete category error:', e));
+      deleteDoc(doc(db, 'categories', categoryId))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud delete category error:', e));
     }
   }
 
@@ -478,7 +550,9 @@ class ProxyStoreService {
       this.saveCategoriesLocal();
       this.notify();
       if (db) {
-        setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud add subcategory error:', e));
+        setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat))
+          .then(() => this.recordSyncSuccess())
+          .catch((e) => console.warn('Cloud add subcategory error:', e));
       }
     }
   }
@@ -492,7 +566,9 @@ class ProxyStoreService {
       this.saveCategoriesLocal();
       this.notify();
       if (db) {
-        setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud update subcategory error:', e));
+        setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat))
+          .then(() => this.recordSyncSuccess())
+          .catch((e) => console.warn('Cloud update subcategory error:', e));
       }
     }
   }
@@ -504,7 +580,9 @@ class ProxyStoreService {
     this.saveCategoriesLocal();
     this.notify();
     if (db) {
-      setDoc(doc(db, 'categories', cat.id), cat).catch((e) => console.warn('Cloud delete subcategory error:', e));
+      setDoc(doc(db, 'categories', cat.id), sanitizeForFirestore(cat))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud delete subcategory error:', e));
     }
   }
 
@@ -527,7 +605,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'products', product.id), product).catch((e) => console.warn('Cloud save product error:', e));
+      setDoc(doc(db, 'products', product.id), sanitizeForFirestore(product))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud save product error:', e));
     }
   }
 
@@ -537,7 +617,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      deleteDoc(doc(db, 'products', productId)).catch((e) => console.warn('Cloud delete product error:', e));
+      deleteDoc(doc(db, 'products', productId))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud delete product error:', e));
     }
   }
 
@@ -572,7 +654,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'settings', 'rate_config'), this.rateConfig).catch((e) => console.warn('Cloud rate config error:', e));
+      setDoc(doc(db, 'settings', 'rate_config'), sanitizeForFirestore(this.rateConfig))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud rate config error:', e));
     }
   }
 
@@ -625,7 +709,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'transactions', newTxn.id), newTxn).catch((e) => console.warn('Cloud save txn error:', e));
+      setDoc(doc(db, 'transactions', newTxn.id), sanitizeForFirestore(newTxn))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud save txn error:', e));
     }
 
     return newTxn;
@@ -639,7 +725,9 @@ class ProxyStoreService {
     this.notify();
 
     if (db) {
-      setDoc(doc(db, 'transactions', id), this.transactions[index]).catch((e) => console.warn('Cloud update txn error:', e));
+      setDoc(doc(db, 'transactions', id), sanitizeForFirestore(this.transactions[index]))
+        .then(() => this.recordSyncSuccess())
+        .catch((e) => console.warn('Cloud update txn error:', e));
     }
     return true;
   }
@@ -651,7 +739,9 @@ class ProxyStoreService {
       this.saveTransactionsLocal();
       this.notify();
       if (db) {
-        deleteDoc(doc(db, 'transactions', id)).catch((e) => console.warn('Cloud delete txn error:', e));
+        deleteDoc(doc(db, 'transactions', id))
+          .then(() => this.recordSyncSuccess())
+          .catch((e) => console.warn('Cloud delete txn error:', e));
       }
       return true;
     }
@@ -678,7 +768,7 @@ class ProxyStoreService {
     this.saveTransactionsLocal();
     this.notify();
     if (db) {
-      this.seedInitialDataToFirebase();
+      this.syncAllToFirebase();
     }
   }
 }
