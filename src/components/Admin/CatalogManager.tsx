@@ -152,10 +152,11 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
     setBasePriceRmb(p.basePriceRmb);
     setDepositRmb(p.depositRmb || Math.ceil(p.basePriceRmb * 0.5));
     setCoverImage(p.coverImage);
-    setDescription(p.description || '詳見dc');
+    setDescription(p.description !== undefined ? p.description : '詳見dc');
     setDisclaimerNotice(
-      p.disclaimerNotice ||
-        '下面的價格都是台幣，以貼文時的匯率轉換計價方便參考，實際價格以收款時的匯率為準，以上價格皆不包含均攤、運費、集運費和賣貨便運費。'
+      p.disclaimerNotice !== undefined
+        ? p.disclaimerNotice
+        : '下面的價格都是台幣，以貼文時的匯率轉換計價方便參考，實際價格以收款時的匯率為準，以上價格皆不包含均攤、運費、集運費和賣貨便運費。'
     );
     setOfficialTag(p.officialTag || '西山居官方正品');
     setSalesNote(p.salesNote || '');
@@ -694,10 +695,17 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                     <h4 className="font-bold text-sm text-[#1E2530] line-clamp-2">{p.name}</h4>
 
                     {/* Description preview */}
-                    <div className="p-2.5 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] text-xs space-y-1 text-[#4A5568]">
-                      <div className="flex items-center gap-1 font-semibold text-[#1E2530]">
-                        <span className="text-[#C5922E]">ⓘ 商品說明:</span>
-                        <span className="truncate">{p.description || '詳見dc'}</span>
+                    <div 
+                      onClick={() => handleOpenEditProduct(p)}
+                      className="p-2.5 rounded-xl bg-[#FAF7F2] hover:bg-[#EDE7DC] border border-[#DDD5C7] text-xs space-y-1 text-[#4A5568] cursor-pointer transition-colors"
+                      title="點擊修改商品說明與規格"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 font-bold text-[#1E2530]">
+                          <span className="text-[#C5922E]">ⓘ 商品說明:</span>
+                          <span className="truncate">{p.description || '詳見dc'}</span>
+                        </div>
+                        <span className="text-[10px] text-[#C5922E] font-bold hover:underline shrink-0">編輯 ✎</span>
                       </div>
                     </div>
 
@@ -809,31 +817,86 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
               </div>
 
               {/* Description (ⓘ 商品說明) */}
-              <div className="space-y-1">
-                <label className="font-bold text-[#1E2530] flex items-center gap-1">
-                  <span className="text-[#C5922E]">ⓘ 商品說明</span>
-                  <span className="text-[11px] text-[#6B7280] font-normal">(顯示於前台上方說明框)</span>
-                </label>
+              <div className="space-y-1.5 p-3 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7]">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <label className="font-extrabold text-[#1E2530] flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-[#FAF7F2] border border-[#C5922E] flex items-center justify-center text-xs font-bold text-[#C5922E]">i</span>
+                    <span>商品說明 (前台頂部說明框)</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setDescription('詳見dc')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#223147] border border-[#DDD5C7] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【詳見dc】
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDescription('官方正品現貨，下單後約 7-14 天抵台出貨')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#223147] border border-[#DDD5C7] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【現貨出貨】
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDescription('預售商品，發貨時間以官方公告為準，請耐心等待')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#1D4ED8] border border-[#BFDBFE] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【預售說明】
+                    </button>
+                    {description && (
+                      <button
+                        type="button"
+                        onClick={() => setDescription('')}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-[#FFF2F0] text-[#CF1322] border border-[#FFCCC7] text-[11px] font-bold cursor-pointer"
+                      >
+                        清除
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <textarea
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="例如: 詳見dc 或 詳細商品做工尺寸介紹"
-                  className="w-full p-2.5 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] text-[#1E2530] outline-none resize-none focus:border-[#C5922E]"
+                  placeholder="例如: 詳見dc 或 填寫詳細尺寸、款式介紹..."
+                  className="w-full p-2.5 rounded-xl bg-white border border-[#DDD5C7] text-[#1E2530] outline-none resize-none focus:border-[#C5922E] text-xs sm:text-sm font-medium"
                 />
               </div>
 
               {/* Disclaimer Notice (警語/匯率條款) */}
-              <div className="space-y-1">
-                <label className="font-bold text-[#1E2530] flex items-center gap-1">
-                  <span className="text-[#A63434]">⚠️ 注意事項 / 匯率條款</span>
-                  <span className="text-[11px] text-[#6B7280] font-normal">(顯示於商品說明正下方的提醒框)</span>
-                </label>
+              <div className="space-y-1.5 p-3 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7]">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <label className="font-extrabold text-[#1E2530] flex items-center gap-1.5">
+                    <span className="text-[#A63434]">⚠️ 注意事項 / 匯率條款</span>
+                    <span className="text-[11px] text-[#6B7280] font-normal">(商品說明下方的紅色提醒框)</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setDisclaimerNotice('下面的價格都是台幣，以貼文時的匯率轉換計價方便參考，實際價格以收款時的匯率為準，以上價格皆不包含均攤、運費、集運費和賣貨便運費。')}
+                      className="px-2 py-0.5 rounded-md bg-white hover:bg-[#EDE7DC] text-[#223147] border border-[#DDD5C7] text-[11px] font-bold cursor-pointer"
+                    >
+                      + 【填入預設條款】
+                    </button>
+                    {disclaimerNotice && (
+                      <button
+                        type="button"
+                        onClick={() => setDisclaimerNotice('')}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-[#FFF2F0] text-[#CF1322] border border-[#FFCCC7] text-[11px] font-bold cursor-pointer"
+                      >
+                        清除
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <textarea
                   rows={2}
                   value={disclaimerNotice}
                   onChange={(e) => setDisclaimerNotice(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF7F2] border border-[#DDD5C7] text-[#1E2530] outline-none resize-none focus:border-[#C5922E]"
+                  placeholder="填寫匯率或代購運費注意事項..."
+                  className="w-full p-2.5 rounded-xl bg-white border border-[#DDD5C7] text-[#1E2530] outline-none resize-none focus:border-[#C5922E] text-xs sm:text-sm font-medium"
                 />
               </div>
 
