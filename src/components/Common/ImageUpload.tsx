@@ -60,11 +60,11 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         return;
       }
 
-      // Compress large images using an offscreen canvas
+      // Compress images using an offscreen canvas to keep Base64 size lightweight for Firestore (1MB limit per doc)
       const img = new Image();
       img.onload = () => {
-        const maxWidth = 1000;
-        const maxHeight = 1000;
+        const maxWidth = 700;
+        const maxHeight = 700;
         let { width, height } = img;
 
         if (width > maxWidth || height > maxHeight) {
@@ -83,7 +83,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          // Use 0.75 quality to ensure compact size (< 200KB per image) for Firestore compatibility
+          let compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          
+          // If still large (> 400KB), compress more aggressively
+          if (compressedDataUrl.length > 500000) {
+            compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          }
+
           onChange(compressedDataUrl);
         } else {
           onChange(result);
