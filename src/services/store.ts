@@ -82,7 +82,7 @@ class ProxyStoreService {
       if (savedOrders) {
         this.orders = JSON.parse(savedOrders);
       } else {
-        this.orders = [...INITIAL_ORDERS];
+        this.orders = [];
       }
 
       // Load Products from cache
@@ -90,7 +90,7 @@ class ProxyStoreService {
       if (savedProducts) {
         this.products = JSON.parse(savedProducts);
       } else {
-        this.products = [...INITIAL_PRODUCTS];
+        this.products = [];
       }
 
       // Load Categories from cache
@@ -98,7 +98,7 @@ class ProxyStoreService {
       if (savedCategories) {
         this.categories = JSON.parse(savedCategories);
       } else {
-        this.categories = [...INITIAL_CATEGORIES];
+        this.categories = [];
       }
 
       // Load Transactions from cache
@@ -106,7 +106,7 @@ class ProxyStoreService {
       if (savedTransactions) {
         this.transactions = JSON.parse(savedTransactions);
       } else {
-        this.transactions = [...INITIAL_TRANSACTIONS];
+        this.transactions = [];
       }
 
       // Load Rate Config from cache
@@ -143,62 +143,66 @@ class ProxyStoreService {
     try {
       console.log('🔌 Connecting to Firebase Firestore real-time streams...');
 
+      // Clean up legacy sample data from Firestore if present
+      const sampleCategoryIds = ['shop_seasun_official', 'shop_jx3_artbooks', 'shop_snowbreak', 'shop_doujin_custom'];
+      for (const sampleId of sampleCategoryIds) {
+        try {
+          const sampleRef = doc(db, 'categories', sampleId);
+          await deleteDoc(sampleRef);
+        } catch (e) {
+          // Ignore if not found
+        }
+      }
+      const sampleProductIds = ['prod-stickers-all'];
+      for (const sampleId of sampleProductIds) {
+        try {
+          const sampleRef = doc(db, 'products', sampleId);
+          await deleteDoc(sampleRef);
+        } catch (e) {
+          // Ignore if not found
+        }
+      }
+
       // 1. Subscribe to Categories
       const categoriesCol = collection(db, 'categories');
       onSnapshot(categoriesCol, (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudCategories: Category[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudCategories.push(docSnap.data() as Category);
-          });
-          const catMap = new Map<string, Category>();
-          this.categories.forEach((c) => catMap.set(c.id, c));
-          cloudCategories.forEach((cc) => catMap.set(cc.id, cc));
-          this.categories = Array.from(catMap.values());
-          this.saveCategoriesLocal();
-          this.isFirebaseConnected = true;
-          this.notify();
-        }
+        const cloudCategories: Category[] = [];
+        snapshot.forEach((docSnap) => {
+          cloudCategories.push(docSnap.data() as Category);
+        });
+        this.categories = cloudCategories;
+        this.saveCategoriesLocal();
+        this.isFirebaseConnected = true;
+        this.notify();
       }, (err) => console.warn('Firestore Categories sync error:', err.message));
 
       // 2. Subscribe to Products
       const productsCol = collection(db, 'products');
       onSnapshot(productsCol, (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudProducts: ProductItem[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudProducts.push(docSnap.data() as ProductItem);
-          });
-          const productMap = new Map<string, ProductItem>();
-          this.products.forEach((p) => productMap.set(p.id, p));
-          cloudProducts.forEach((cp) => productMap.set(cp.id, cp));
-          this.products = Array.from(productMap.values());
-          this.saveProductsLocal();
-          this.isFirebaseConnected = true;
-          this.notify();
-        }
+        const cloudProducts: ProductItem[] = [];
+        snapshot.forEach((docSnap) => {
+          cloudProducts.push(docSnap.data() as ProductItem);
+        });
+        this.products = cloudProducts;
+        this.saveProductsLocal();
+        this.isFirebaseConnected = true;
+        this.notify();
       }, (err) => console.warn('Firestore Products sync error:', err.message));
 
       // 3. Subscribe to Orders
       const ordersCol = collection(db, 'orders');
       onSnapshot(ordersCol, (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudOrders: Order[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudOrders.push(docSnap.data() as Order);
-          });
-          const orderMap = new Map<string, Order>();
-          this.orders.forEach((o) => orderMap.set(o.id, o));
-          cloudOrders.forEach((co) => orderMap.set(co.id, co));
-          const mergedOrders = Array.from(orderMap.values());
-          mergedOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          this.orders = mergedOrders;
-          this.saveOrdersLocal();
-          this.isFirebaseConnected = true;
-          this.syncError = null;
-          this.recordSyncSuccess();
-          this.notify();
-        }
+        const cloudOrders: Order[] = [];
+        snapshot.forEach((docSnap) => {
+          cloudOrders.push(docSnap.data() as Order);
+        });
+        cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        this.orders = cloudOrders;
+        this.saveOrdersLocal();
+        this.isFirebaseConnected = true;
+        this.syncError = null;
+        this.recordSyncSuccess();
+        this.notify();
       }, (err) => {
         console.warn('Firestore Orders sync error:', err.message);
         this.syncError = err.message;
@@ -208,21 +212,15 @@ class ProxyStoreService {
       // 4. Subscribe to Transactions
       const txnsCol = collection(db, 'transactions');
       onSnapshot(txnsCol, (snapshot) => {
-        if (!snapshot.empty) {
-          const cloudTxns: FinancialTransaction[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudTxns.push(docSnap.data() as FinancialTransaction);
-          });
-          const txnMap = new Map<string, FinancialTransaction>();
-          this.transactions.forEach((t) => txnMap.set(t.id, t));
-          cloudTxns.forEach((ct) => txnMap.set(ct.id, ct));
-          const mergedTxns = Array.from(txnMap.values());
-          mergedTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          this.transactions = mergedTxns;
-          this.saveTransactionsLocal();
-          this.isFirebaseConnected = true;
-          this.notify();
-        }
+        const cloudTxns: FinancialTransaction[] = [];
+        snapshot.forEach((docSnap) => {
+          cloudTxns.push(docSnap.data() as FinancialTransaction);
+        });
+        cloudTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        this.transactions = cloudTxns;
+        this.saveTransactionsLocal();
+        this.isFirebaseConnected = true;
+        this.notify();
       }, (err) => console.warn('Firestore Transactions sync error:', err.message));
 
       // 5. Subscribe to Settings (Rate Config)
