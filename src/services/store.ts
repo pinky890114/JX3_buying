@@ -153,7 +153,16 @@ class ProxyStoreService {
           // Ignore if not found
         }
       }
-      const sampleProductIds = ['prod-stickers-all'];
+      const sampleProductIds = [
+        'prod-stickers-all', 
+        'prod-jx3-stand-19', 
+        'prod-jx3-weapon-charm', 
+        'prod-jx3-plush-pet', 
+        'prod-jx3-book-10th', 
+        'prod-snowbreak-stand', 
+        'prod-snowbreak-mat', 
+        'prod-ita-bag'
+      ];
       for (const sampleId of sampleProductIds) {
         try {
           const sampleRef = doc(db, 'products', sampleId);
@@ -161,6 +170,20 @@ class ProxyStoreService {
         } catch (e) {
           // Ignore if not found
         }
+      }
+      const sampleOrderIds = ['XSJ-202608-8821', 'XSJ-202608-9932', 'XSJ-202608-1045', 'XSJ-202608-2201'];
+      for (const sampleId of sampleOrderIds) {
+        try {
+          const sampleRef = doc(db, 'orders', sampleId);
+          await deleteDoc(sampleRef);
+        } catch (e) {}
+      }
+      const sampleTxnIds = ['TXN-202608-001', 'TXN-202608-002', 'TXN-202608-003'];
+      for (const sampleId of sampleTxnIds) {
+        try {
+          const sampleRef = doc(db, 'transactions', sampleId);
+          await deleteDoc(sampleRef);
+        } catch (e) {}
       }
 
       // 1. Subscribe to Categories
