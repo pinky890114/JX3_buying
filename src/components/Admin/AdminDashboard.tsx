@@ -7,7 +7,7 @@ import { FinancialReport } from './FinancialReport';
 import { 
   ShieldCheck, Search, Filter, RefreshCw, LogOut, Package, 
   CreditCard, Clock, Truck, CheckCircle2, AlertCircle, Edit3, 
-  ExternalLink, Layers, DollarSign, Settings, Sparkles, Image as ImageIcon, Plus, ArrowLeft, BarChart3, Store
+  ExternalLink, Layers, DollarSign, Settings, Sparkles, Image as ImageIcon, Plus, ArrowLeft, BarChart3, Store, Trash2
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -35,6 +35,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isRateSettingsOpen, setIsRateSettingsOpen] = useState<boolean>(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState<boolean>(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState<boolean>(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState(proxyStore.getSyncStatus());
 
@@ -117,6 +118,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProducts(proxyStore.getProducts());
     setIsResetConfirmOpen(false);
     setToastMessage('已成功重設為西山居預設範例資料！');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const handleConfirmClearAllData = () => {
+    proxyStore.clearAllData();
+    setOrders(proxyStore.getOrders());
+    setCategories(proxyStore.getCategories());
+    setProducts(proxyStore.getProducts());
+    setIsClearConfirmOpen(false);
+    setToastMessage('已成功清空所有資料，現在為完全空白狀態！');
     setTimeout(() => setToastMessage(null), 2500);
   };
 
@@ -207,6 +218,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>重設範例</span>
+          </button>
+
+          <button
+            onClick={() => setIsClearConfirmOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-[#FFF5F5] hover:bg-[#FFEBEB] text-[#A63434] text-xs font-semibold border border-[#E8C4C4] flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="清空所有資料，從零開始"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-[#A63434]" />
+            <span>清空所有資料</span>
           </button>
 
           <button
@@ -698,6 +718,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="px-4 py-2 rounded-xl bg-[#A63434] hover:bg-[#8F2828] text-white font-bold text-xs shadow-xs cursor-pointer"
               >
                 確認重設
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {isClearConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-sm bg-white border border-[#DDD5C7] rounded-2xl p-6 shadow-2xl text-[#1E2530] space-y-4">
+            <div className="flex items-center gap-3 text-[#A63434]">
+              <div className="w-10 h-10 rounded-full bg-[#FFF5F5] border border-[#E8C4C4] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-[#A63434]" />
+              </div>
+              <h4 className="font-extrabold text-base text-[#1E2530]">確定要清空所有資料嗎？</h4>
+            </div>
+
+            <p className="text-xs text-[#4A5568] leading-relaxed">
+              此操作將會清空所有店鋪、分類、商品與訂單（包含雲端與本機），讓您從一個完全空白的乾淨狀態開始建立！
+            </p>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClearConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#FAF7F2] hover:bg-[#EDE7DC] text-[#4A5568] font-bold text-xs cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearAllData}
+                className="px-4 py-2 rounded-xl bg-[#A63434] hover:bg-[#8F2828] text-white font-bold text-xs shadow-xs cursor-pointer"
+              >
+                確認清空所有資料
               </button>
             </div>
           </div>

@@ -143,20 +143,6 @@ class ProxyStoreService {
     try {
       console.log('🔌 Connecting to Firebase Firestore real-time streams...');
 
-      // Check if cloud has products / categories; if totally empty, seed them once
-      const checkInitialSeed = async () => {
-        try {
-          const productsSnap = await getDocs(collection(db!, 'products'));
-          if (productsSnap.empty) {
-            console.log('📦 Firestore is empty, auto-seeding initial products & categories to cloud...');
-            await this.syncAllToFirebase();
-          }
-        } catch (e: any) {
-          console.warn('Check seed warning:', e?.message || e);
-        }
-      };
-      checkInitialSeed();
-
       // 1. Subscribe to Categories
       const categoriesCol = collection(db, 'categories');
       onSnapshot(categoriesCol, (snapshot) => {
@@ -856,6 +842,33 @@ class ProxyStoreService {
     this.notify();
     if (db) {
       this.syncAllToFirebase();
+    }
+  }
+
+  public async clearAllData() {
+    this.orders = [];
+    this.products = [];
+    this.categories = [];
+    this.transactions = [];
+    this.saveOrdersLocal();
+    this.saveProductsLocal();
+    this.saveCategoriesLocal();
+    this.saveTransactionsLocal();
+    this.notify();
+
+    if (db) {
+      try {
+        console.log('🗑️ 正在從 Firebase 雲端徹底刪除所有資料...');
+        const collectionsToClear = ['products', 'categories', 'orders', 'transactions'];
+        for (const colName of collectionsToClear) {
+          const snap = await getDocs(collection(db, colName));
+          const deletePromises = snap.docs.map((d) => deleteDoc(d.ref));
+          await Promise.all(deletePromises);
+        }
+        console.log('✅ Firebase 雲端資料已全部清空！');
+      } catch (e) {
+        console.warn('Error clearing Firestore docs:', e);
+      }
     }
   }
 }
