@@ -145,7 +145,10 @@ class ProxyStoreService {
           snapshot.forEach((docSnap) => {
             cloudCategories.push(docSnap.data() as Category);
           });
-          this.categories = cloudCategories;
+          const catMap = new Map<string, Category>();
+          this.categories.forEach((c) => catMap.set(c.id, c));
+          cloudCategories.forEach((cc) => catMap.set(cc.id, cc));
+          this.categories = Array.from(catMap.values());
           this.saveCategoriesLocal();
           this.isFirebaseConnected = true;
           this.notify();
@@ -160,7 +163,10 @@ class ProxyStoreService {
           snapshot.forEach((docSnap) => {
             cloudProducts.push(docSnap.data() as ProductItem);
           });
-          this.products = cloudProducts;
+          const productMap = new Map<string, ProductItem>();
+          this.products.forEach((p) => productMap.set(p.id, p));
+          cloudProducts.forEach((cp) => productMap.set(cp.id, cp));
+          this.products = Array.from(productMap.values());
           this.saveProductsLocal();
           this.isFirebaseConnected = true;
           this.notify();
@@ -175,8 +181,12 @@ class ProxyStoreService {
           snapshot.forEach((docSnap) => {
             cloudOrders.push(docSnap.data() as Order);
           });
-          cloudOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          this.orders = cloudOrders;
+          const orderMap = new Map<string, Order>();
+          this.orders.forEach((o) => orderMap.set(o.id, o));
+          cloudOrders.forEach((co) => orderMap.set(co.id, co));
+          const mergedOrders = Array.from(orderMap.values());
+          mergedOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          this.orders = mergedOrders;
           this.saveOrdersLocal();
           this.isFirebaseConnected = true;
           this.syncError = null;
@@ -197,8 +207,12 @@ class ProxyStoreService {
           snapshot.forEach((docSnap) => {
             cloudTxns.push(docSnap.data() as FinancialTransaction);
           });
-          cloudTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          this.transactions = cloudTxns;
+          const txnMap = new Map<string, FinancialTransaction>();
+          this.transactions.forEach((t) => txnMap.set(t.id, t));
+          cloudTxns.forEach((ct) => txnMap.set(ct.id, ct));
+          const mergedTxns = Array.from(txnMap.values());
+          mergedTxns.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          this.transactions = mergedTxns;
           this.saveTransactionsLocal();
           this.isFirebaseConnected = true;
           this.notify();
