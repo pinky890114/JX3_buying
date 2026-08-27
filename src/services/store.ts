@@ -30,10 +30,30 @@ export interface AdminUser {
 }
 
 /**
- * Strips all `undefined` values recursively so Firestore never rejects the write.
+ * Strips all `undefined` values recursively and guards against Firestore 1MB document size limit.
  */
 function sanitizeForFirestore<T>(data: T): T {
-  return JSON.parse(JSON.stringify(data));
+  const cleaned = JSON.parse(JSON.stringify(data));
+  const jsonStr = JSON.stringify(cleaned);
+  if (jsonStr.length > 900000 && cleaned && typeof cleaned === 'object') {
+    console.warn('⚠️ Document exceeds 900KB, stripping oversized option images to fit Firestore 1MB limit...');
+    if ('options' in (cleaned as any) && Array.isArray((cleaned as any).options)) {
+      (cleaned as any).options = (cleaned as any).options.map((opt: any) => ({
+        ...opt,
+        image: (opt.image && opt.image.length > 50000) ? '' : opt.image
+      }));
+    }
+    if ('specGroups' in (cleaned as any) && Array.isArray((cleaned as any).specGroups)) {
+      (cleaned as any).specGroups = (cleaned as any).specGroups.map((group: any) => ({
+        ...group,
+        options: Array.isArray(group.options) ? group.options.map((opt: any) => ({
+          ...opt,
+          image: (opt.image && opt.image.length > 50000) ? '' : opt.image
+        })) : []
+      }));
+    }
+  }
+  return cleaned;
 }
 
 // Unified Store syncing between Local Cache & Firebase Firestore in Real-Time

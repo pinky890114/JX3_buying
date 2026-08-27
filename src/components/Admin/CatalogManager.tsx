@@ -203,13 +203,111 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
     target.options.push({
       id: newOptId,
       name: `新規格 ${target.options.length + 1}`,
-      priceTwd: 30,
+      priceTwd: target.options[0]?.priceTwd || 30,
       priceOffsetRmb: 0,
       image: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=300&auto=format&fit=crop&q=80',
       inStock: true,
       statusNote: '',
     });
     setSpecGroups(newGroups);
+  };
+
+  const handleBatchUploadOptions = (groupIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileList = Array.from(files);
+    let processedCount = 0;
+    const newGroups = [...specGroups];
+    const targetGroup = newGroups[groupIndex];
+
+    fileList.forEach((f, idx) => {
+      const file = f as File;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        if (!result) {
+          processedCount++;
+          return;
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          const maxWidth = 400;
+          const maxHeight = 400;
+          let { width, height } = img;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          let finalDataUrl = result;
+
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            let compressed = canvas.toDataURL('image/jpeg', 0.5);
+            if (compressed.length > 200000) {
+              compressed = canvas.toDataURL('image/jpeg', 0.4);
+            }
+            finalDataUrl = compressed;
+          }
+
+          const cleanName = file.name.replace(/\.[^/.]+$/, "");
+          const newOptId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 5)}_${idx}`;
+          
+          targetGroup.options.push({
+            id: newOptId,
+            name: cleanName || `款式 ${targetGroup.options.length + 1}`,
+            priceTwd: targetGroup.options[0]?.priceTwd || 30,
+            priceOffsetRmb: 0,
+            image: finalDataUrl,
+            inStock: true,
+            statusNote: '',
+          });
+
+          processedCount++;
+          if (processedCount === fileList.length) {
+            setSpecGroups(newGroups);
+            showToast(`成功批次上傳 ${fileList.length} 張規格圖片！`);
+          }
+        };
+        img.onerror = () => {
+          const cleanName = file.name.replace(/\.[^/.]+$/, "");
+          const newOptId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 5)}_${idx}`;
+          targetGroup.options.push({
+            id: newOptId,
+            name: cleanName || `款式 ${targetGroup.options.length + 1}`,
+            priceTwd: targetGroup.options[0]?.priceTwd || 30,
+            priceOffsetRmb: 0,
+            image: result,
+            inStock: true,
+            statusNote: '',
+          });
+          processedCount++;
+          if (processedCount === fileList.length) {
+            setSpecGroups(newGroups);
+            showToast(`成功批次上傳 ${fileList.length} 張規格圖片！`);
+          }
+        };
+        img.src = result;
+      };
+      reader.onerror = () => {
+        processedCount++;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = '';
   };
 
   const handleRemoveSpecOption = (groupIndex: number, optIndex: number) => {
@@ -990,13 +1088,27 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                         className="flex-1 p-2 rounded-lg bg-[#FAF7F2] border border-[#DDD5C7] text-xs font-bold text-[#1E2530] outline-none focus:border-[#C5922E]"
                         placeholder="群組標題 (例如: 門派貼紙、款式選擇)"
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleAddSpecOption(gIdx)}
-                        className="px-3 py-1.5 rounded-lg bg-[#223147] hover:bg-[#1A2536] text-[#E2B755] font-bold text-xs shrink-0 cursor-pointer transition-colors"
-                      >
-                        + 加規格選項
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="px-3 py-1.5 rounded-lg bg-[#C5922E] hover:bg-[#B38025] text-white font-bold text-xs shrink-0 cursor-pointer transition-colors flex items-center gap-1 shadow-2xs" title="一次選取多張圖片進行批次上傳與建立規格選項">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>批次上傳多張圖 (可選20張)</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => handleBatchUploadOptions(gIdx, e)}
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddSpecOption(gIdx)}
+                          className="px-3 py-1.5 rounded-lg bg-[#223147] hover:bg-[#1A2536] text-[#E2B755] font-bold text-xs shrink-0 cursor-pointer transition-colors"
+                        >
+                          + 加規格選項
+                        </button>
+                      </div>
                     </div>
 
                     {/* Options list with image, name, price, statusNote, inStock */}
